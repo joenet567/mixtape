@@ -360,6 +360,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         is CtxTarget.OfTape -> tape(target.ref)?.songs.orEmpty()
     }
 
+    /** A queue that grows out of one song: its artists, its tapes, what you play alongside it. */
+    fun startRadio(song: Song) {
+        viewModelScope.launch {
+            val songs = Radio.build(getApplication(), song, library, libraryTapes())
+            player.play(songs, 0, PlayCtx.oneOff("${song.title} radio"))
+            notify("Radio from “${song.title}”")
+        }
+    }
+
     /** Continue a tape where it stopped. */
     fun resume(card: ResumeCard) {
         val i = card.songs.indexOfFirst { it.key == card.resume.lastKey }

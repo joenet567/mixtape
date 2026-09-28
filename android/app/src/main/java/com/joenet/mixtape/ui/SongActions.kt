@@ -18,6 +18,7 @@ import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.Radio
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -61,6 +62,10 @@ fun SongActionsSheet(vm: MainViewModel, song: Song, onDismiss: () -> Unit) {
             ActionRow(rememberVectorPainter(Icons.AutoMirrored.Rounded.QueueMusic), "Add to queue") {
                 vm.player.addToQueue(song)
                 vm.notify("Added to queue")
+                done()
+            }
+            ActionRow(rememberVectorPainter(Icons.Rounded.Radio), "Start radio") {
+                vm.startRadio(song)
                 done()
             }
             val liked = vm.isLiked(song)

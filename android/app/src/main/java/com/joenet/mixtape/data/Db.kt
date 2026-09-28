@@ -141,6 +141,9 @@ interface HistoryDao {
 
     @Query("SELECT * FROM resume ORDER BY updatedAt DESC LIMIT :limit")
     fun resumes(limit: Int): Flow<List<Resume>>
+
+    @Query("SELECT * FROM resume ORDER BY updatedAt DESC LIMIT :limit")
+    suspend fun resumeList(limit: Int): List<Resume>
 }
 
 @Dao
@@ -148,7 +151,7 @@ interface LikeDao {
     @Query("SELECT * FROM likes ORDER BY likedAt DESC")
     fun all(): Flow<List<Like>>
 
-    @Query("SELECT key FROM likes")
+    @Query("SELECT key FROM likes ORDER BY likedAt DESC")
     suspend fun keys(): List<String>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -170,6 +173,12 @@ interface TapeDao {
 
     @Query("SELECT * FROM tape_tracks ORDER BY tapeId, position")
     fun tracks(): Flow<List<TapeTrack>>
+
+    @Query("SELECT * FROM tapes ORDER BY updatedAt DESC")
+    suspend fun tapeList(): List<UserTape>
+
+    @Query("SELECT * FROM tape_tracks ORDER BY tapeId, side, position")
+    suspend fun trackList(): List<TapeTrack>
 
     @Insert
     suspend fun insert(tape: UserTape): Long

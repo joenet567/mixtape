@@ -43,12 +43,33 @@ data class SearchResults(
     }
 }
 
+/** Something to play: the songs, where in them to start, and where they're from. */
+data class PlayPick(val songs: List<Song>, val start: Int, val ctx: PlayCtx, val positionMs: Long = 0L)
+
 /**
  * Spotify-style search over the library: every word of the query must appear somewhere (title,
  * artist, album or tape), in any order, ignoring accents. Results come grouped, with the single
  * best match pulled out as the top result.
  */
 object Searcher {
+
+    // Spoken requests carry words that aren't in any title: "play Helena by My Chemical Romance".
+    private val SPOKEN_FILLER = Regex("""\b(by|songs?|music|playlist|tape)\b""", RegexOption.IGNORE_CASE)
+
+    /**
+     * What "play [query]" means, for voice (Assistant, Android Auto): an artist or tape by that
+     * name plays in full; otherwise the matching songs play, best match first.
+     */
+    fun pick(index: LibraryIndex, query: String, extraTapes: List<TapeHit> = emptyList()): PlayPick? {
+        val r = search(index, query.replace(SPOKEN_FILLER, " "), extraTapes)
+        val pick = when (val top = r.top) {
+            is TopResult.OfArtist -> PlayPick(top.songs, 0, PlayCtx.artist(top.name))
+            is TopResult.OfTape -> PlayPick(top.tape.songs, 0, PlayCtx.of(top.tape.ref, top.tape.name))
+            is TopResult.OfSong -> PlayPick(r.songs, r.songs.indexOf(top.song).coerceAtLeast(0), PlayCtx.oneOff("Search: “${query.trim()}”"))
+            null -> null
+        }
+        return pick?.takeIf { it.songs.isNotEmpty() }
+    }
 
     fun search(index: LibraryIndex, query: String, extraTapes: List<TapeHit> = emptyList()): SearchResults {
         val tokens = Fold.tokens(query)

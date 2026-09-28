@@ -11,6 +11,7 @@ import android.os.Looper
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.Timeline
@@ -18,20 +19,29 @@ import androidx.media3.common.Tracks
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.extractor.metadata.id3.TextInformationFrame
 import androidx.media3.session.CommandButton
+import androidx.media3.session.LibraryResult
+import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
-import androidx.media3.session.MediaSessionService
 import androidx.media3.session.SessionCommand
+import androidx.media3.session.SessionError
 import androidx.media3.session.SessionResult
+import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
+import com.google.common.util.concurrent.SettableFuture
+import com.joenet.mixtape.widget.MixtapeWidget
+import com.joenet.mixtape.widget.WidgetState
 import com.joenet.mixtape.data.Like
 import com.joenet.mixtape.data.MixtapeDb
 import com.joenet.mixtape.data.Play
 import com.joenet.mixtape.data.Resume
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.min
 import kotlin.math.pow
@@ -44,14 +54,19 @@ import kotlin.math.pow
  * It also keeps the listening history (a play counts at 30 s or half the song, whichever comes
  * first), the resume point of each tape, a Like button in the notification, the ReplayGain
  * volume ("Even out loudness") and the sleep timer.
+ *
+ * It's a library service: Android Auto browses Home, Tapes and Artists (see [Catalog]), and
+ * "Hey Google, play … on Mixtape" arrives as a search query in [Callback.onSetMediaItems].
+ * The home-screen widget mirrors what's playing.
  */
-class PlaybackService : MediaSessionService() {
+class PlaybackService : MediaLibraryService() {
 
-    private var session: MediaSession? = null
+    private var session: MediaLibrarySession? = null
     private lateinit var exo: ExoPlayer
     private lateinit var player: MixPlayer
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val db by lazy { MixtapeDb.get(this) }
+    private val catalog by lazy { Catalog(this) }
     private val handler = Handler(Looper.getMainLooper())
 
     @Volatile private var liked: Set<String> = emptySet()
@@ -90,11 +105,11 @@ class PlaybackService : MediaSessionService() {
                 .putExtra(MainActivity.EXTRA_OPEN_PLAYER, true),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
-        session = MediaSession.Builder(this, player)
-            .setCallback(Callback())
+        session = MediaLibrarySession.Builder(this, player, Callback())
             .setSessionActivity(openApp)
             .build()
         publishExtras()
+        updateWidget()
 
         scope.launch {
             db.likes().all().collect { list ->
@@ -123,7 +138,44 @@ class PlaybackService : MediaSessionService() {
         )
     }
 
-    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = session
+    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? = session
+
+    /** Runs [block] on the service scope and hands Media3 its result as a future. */
+    private fun <T> future(block: suspend () -> T): ListenableFuture<T> {
+        val result = SettableFuture.create<T>()
+        scope.launch {
+            try {
+                result.set(block())
+            } catch (e: CancellationException) {
+                result.cancel(false)
+            } catch (e: Exception) {
+                result.setException(e)
+            }
+        }
+        return result
+    }
+
+    // ---- home-screen widget ----
+
+    private var widgetJob: Job? = null
+
+    private fun updateWidget() {
+        val item = player.currentMediaItem
+        val duration = player.duration.takeIf { it != C.TIME_UNSET && it > 0 }
+        val state = WidgetState(
+            title = item?.mediaMetadata?.title?.toString().orEmpty(),
+            artist = item?.mediaMetadata?.artist?.toString().orEmpty(),
+            folder = item?.folder.orEmpty(),
+            mediaId = item?.mediaId,
+            playing = player.isPlaying,
+            progress = duration?.let { (player.currentPosition.toFloat() / it).coerceIn(0f, 1f) } ?: 0f,
+        )
+        widgetJob?.cancel()
+        widgetJob = scope.launch {
+            delay(300) // a track change fires several events; redraw once
+            runCatching { MixtapeWidget.push(this@PlaybackService, state) }
+        }
+    }
 
     /** App swiped away from recents: keep going if music is playing, otherwise shut down. */
     override fun onTaskRemoved(rootIntent: Intent?) {
@@ -309,6 +361,23 @@ class PlaybackService : MediaSessionService() {
         }
     }
 
+    /** Controllers send the app's items by id; rebuild the playable URI (the id is the content:// URI). */
+    private fun playable(item: MediaItem): MediaItem = item.buildUpon().setUri(Uri.parse(item.mediaId)).build()
+
+    private fun recentRoot(saved: QueueStore.Saved): MediaItem = MediaItem.Builder()
+        .setMediaId(RECENT)
+        .setMediaMetadata(
+            MediaMetadata.Builder()
+                .setTitle(saved.items.getOrNull(saved.index)?.ctx ?: "Mixtape")
+                .setIsBrowsable(true)
+                .setIsPlayable(false)
+                .build()
+        )
+        .build()
+
+    private fun <T> List<T>.page(page: Int, pageSize: Int): List<T> =
+        if (pageSize <= 0 || pageSize == Int.MAX_VALUE) this else drop(page * pageSize).take(pageSize)
+
     private fun saveResume() {
         val item = player.currentMediaItem ?: return
         val ref = item.ctxRef ?: return
@@ -316,16 +385,113 @@ class PlaybackService : MediaSessionService() {
         scope.launch(Dispatchers.IO) { db.history().saveResume(resume) }
     }
 
-    private inner class Callback : MediaSession.Callback {
+    private inner class Callback : MediaLibrarySession.Callback {
         override fun onConnect(session: MediaSession, controller: MediaSession.ControllerInfo): MediaSession.ConnectionResult =
             MediaSession.ConnectionResult.AcceptedResultBuilder(session)
                 .setAvailableSessionCommands(
-                    MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS.buildUpon()
+                    MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS.buildUpon()
                         .add(likeCommand)
                         .add(SessionCommand(ACTION_SLEEP, Bundle.EMPTY))
                         .build()
                 )
                 .build()
+
+        // ---- browsing (Android Auto) ----
+
+        override fun onGetLibraryRoot(
+            session: MediaLibrarySession,
+            browser: MediaSession.ControllerInfo,
+            params: LibraryParams?,
+        ): ListenableFuture<LibraryResult<MediaItem>> {
+            // The system's media resumption asks for just the last thing played; that's the saved queue.
+            if (params?.isRecent == true) {
+                val saved = QueueStore.load(this@PlaybackService)
+                    ?: return Futures.immediateFuture(LibraryResult.ofError(SessionError.ERROR_NOT_SUPPORTED))
+                return Futures.immediateFuture(LibraryResult.ofItem(recentRoot(saved), params))
+            }
+            return Futures.immediateFuture(
+                LibraryResult.ofItem(catalog.root(), LibraryParams.Builder().setExtras(Catalog.rootExtras()).build())
+            )
+        }
+
+        override fun onGetChildren(
+            session: MediaLibrarySession,
+            browser: MediaSession.ControllerInfo,
+            parentId: String,
+            page: Int,
+            pageSize: Int,
+            params: LibraryParams?,
+        ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> = future {
+            if (parentId == RECENT) {
+                val saved = QueueStore.load(this@PlaybackService)
+                return@future LibraryResult.ofItemList(listOfNotNull(saved?.items?.getOrNull(saved.index)), params)
+            }
+            val items = catalog.children(parentId, catalog.snapshot())
+                ?: return@future LibraryResult.ofError(SessionError.ERROR_BAD_VALUE)
+            LibraryResult.ofItemList(items.page(page, pageSize), params)
+        }
+
+        override fun onGetItem(
+            session: MediaLibrarySession,
+            browser: MediaSession.ControllerInfo,
+            mediaId: String,
+        ): ListenableFuture<LibraryResult<MediaItem>> = future {
+            catalog.item(mediaId, catalog.snapshot())?.let { LibraryResult.ofItem(it, null) }
+                ?: LibraryResult.ofError(SessionError.ERROR_BAD_VALUE)
+        }
+
+        override fun onSearch(
+            session: MediaLibrarySession,
+            browser: MediaSession.ControllerInfo,
+            query: String,
+            params: LibraryParams?,
+        ): ListenableFuture<LibraryResult<Void>> = future {
+            session.notifySearchResultChanged(browser, query, catalog.search(query, catalog.snapshot()).size, params)
+            LibraryResult.ofVoid()
+        }
+
+        override fun onGetSearchResult(
+            session: MediaLibrarySession,
+            browser: MediaSession.ControllerInfo,
+            query: String,
+            page: Int,
+            pageSize: Int,
+            params: LibraryParams?,
+        ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> = future {
+            LibraryResult.ofItemList(catalog.search(query, catalog.snapshot()).page(page, pageSize), params)
+        }
+
+        /**
+         * Everything that starts playback lands here. Browse ids (a tape, an artist, a song in a
+         * list) and spoken requests ("play Sơn Tùng") become the whole queue they stand for;
+         * the app's own queues pass straight through.
+         */
+        override fun onSetMediaItems(
+            mediaSession: MediaSession,
+            controller: MediaSession.ControllerInfo,
+            mediaItems: MutableList<MediaItem>,
+            startIndex: Int,
+            startPositionMs: Long,
+        ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
+            val single = mediaItems.singleOrNull()
+            val query = single?.requestMetadata?.searchQuery
+            if (single == null || (query == null && !catalog.isOurs(single.mediaId))) {
+                return Futures.immediateFuture(MediaSession.MediaItemsWithStartPosition(mediaItems.map(::playable), startIndex, startPositionMs))
+            }
+            return future {
+                if (query.isNullOrBlank() && single.mediaId.isEmpty()) {
+                    // "Play music on Mixtape": carry on with the last queue, or shuffle everything.
+                    QueueStore.load(this@PlaybackService)?.let { return@future MediaSession.MediaItemsWithStartPosition(it.items, it.index, it.positionMs) }
+                }
+                val snap = catalog.snapshot()
+                val pick = if (query != null) {
+                    if (query.isBlank()) catalog.pick(Catalog.ALL, snap) else Searcher.pick(snap.index, query, listOf(snap.liked) + snap.userTapes)
+                } else {
+                    catalog.pick(single.mediaId, snap)
+                } ?: throw IllegalArgumentException("Nothing in the library matches")
+                MediaSession.MediaItemsWithStartPosition(pick.songs.map { it.toMediaItem(pick.ctx) }, pick.start, pick.positionMs)
+            }
+        }
 
         override fun onCustomCommand(
             session: MediaSession,
@@ -340,14 +506,21 @@ class PlaybackService : MediaSessionService() {
             return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
         }
 
-        /** Controllers send items by id; rebuild the playable URI (the id is the content:// URI). */
+        /** Songs added to the queue: the app's items by URI, a browsed song by its catalog id. */
         override fun onAddMediaItems(
             mediaSession: MediaSession,
             controller: MediaSession.ControllerInfo,
             mediaItems: MutableList<MediaItem>,
-        ): ListenableFuture<MutableList<MediaItem>> = Futures.immediateFuture(
-            mediaItems.map { it.buildUpon().setUri(Uri.parse(it.mediaId)).build() }.toMutableList()
-        )
+        ): ListenableFuture<MutableList<MediaItem>> {
+            if (mediaItems.none { catalog.isOurs(it.mediaId) }) return Futures.immediateFuture(mediaItems.map(::playable).toMutableList())
+            return future {
+                val snap = catalog.snapshot()
+                mediaItems.mapNotNull { item ->
+                    if (!catalog.isOurs(item.mediaId)) return@mapNotNull playable(item)
+                    catalog.pick(item.mediaId, snap)?.let { it.songs[it.start].toMediaItem(ctx = null, queued = true) }
+                }.toMutableList()
+            }
+        }
 
         /** Play pressed on a headset / system media controls while the app wasn't running. */
         override fun onPlaybackResumption(
@@ -376,11 +549,13 @@ class PlaybackService : MediaSessionService() {
             loggedQid = null // a repeat of the same entry counts as a new listen
             refreshLikeButton()
             saveResume()
+            updateWidget()
         }
 
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             handler.removeCallbacks(listenCheck)
             if (isPlaying) handler.postDelayed(listenCheck, 1000) else saveResume()
+            updateWidget()
         }
 
         override fun onTracksChanged(tracks: Tracks) = updateTrackVolume()
@@ -418,6 +593,9 @@ class PlaybackService : MediaSessionService() {
 
     companion object {
         const val ACTION_LIKE = "com.joenet.mixtape.LIKE"
+
+        /** The system's media resumption browses this root for the last thing played. */
+        private const val RECENT = "recent"
 
         /** Sleep timer: [ARG_MINUTES] > 0 sets it, 0 turns it off, [SLEEP_END_OF_SONG] stops after this song. */
         const val ACTION_SLEEP = "com.joenet.mixtape.SLEEP"

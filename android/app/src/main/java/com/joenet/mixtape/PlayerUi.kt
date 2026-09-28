@@ -124,6 +124,18 @@ class PlayerUi {
         c.play()
     }
 
+    /** "Play [query]": the service works out what that means (see PlaybackService.onSetMediaItems). */
+    fun playFromSearch(query: String) {
+        val c = controller ?: return
+        c.setMediaItem(
+            MediaItem.Builder()
+                .setRequestMetadata(MediaItem.RequestMetadata.Builder().setSearchQuery(query).build())
+                .build()
+        )
+        c.prepare()
+        c.play()
+    }
+
     fun playInOrder(songs: List<Song>, ctx: PlayCtx) {
         controller?.shuffleModeEnabled = false
         play(songs, 0, ctx)

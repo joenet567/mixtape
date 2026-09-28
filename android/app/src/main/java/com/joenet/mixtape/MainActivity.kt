@@ -1,9 +1,11 @@
 package com.joenet.mixtape
 
+import android.app.SearchManager
 import android.content.ComponentName
 import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
+import android.provider.MediaStore
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
@@ -48,9 +50,27 @@ class MainActivity : ComponentActivity() {
         handleIntent(intent)
     }
 
-    /** Tapping the media notification opens straight to the player screen. */
+    /** Voice request waiting for the player connection. */
+    private var pendingSearch: String? = null
+
+    /**
+     * Tapping the media notification (or the widget's tape) opens straight to the player screen;
+     * "Hey Google, play … on Mixtape" arrives as a search to play.
+     */
     private fun handleIntent(intent: Intent?) {
         if (intent?.getBooleanExtra(EXTRA_OPEN_PLAYER, false) == true) vm.playerExpanded = true
+        if (intent?.action == MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH) {
+            pendingSearch = intent.getStringExtra(SearchManager.QUERY).orEmpty()
+            playPendingSearch()
+        }
+    }
+
+    private fun playPendingSearch() {
+        val query = pendingSearch ?: return
+        if (vm.player.controller == null) return // runs again once the controller connects
+        pendingSearch = null
+        vm.player.playFromSearch(query)
+        vm.playerExpanded = true
     }
 
     private fun requestAudioPermission() = permissionLauncher.launch(MainViewModel.audioPermission)
@@ -66,7 +86,10 @@ class MainActivity : ComponentActivity() {
         controllerFuture = future
         future.addListener({
             if (controllerFuture === future && !future.isCancelled) {
-                runCatching { future.get() }.getOrNull()?.let { vm.player.attach(it) }
+                runCatching { future.get() }.getOrNull()?.let {
+                    vm.player.attach(it)
+                    playPendingSearch()
+                }
             }
         }, ContextCompat.getMainExecutor(this))
     }

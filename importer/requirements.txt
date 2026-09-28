@@ -2,3 +2,6 @@
 yt-dlp[default]
 # JS runtime yt-dlp needs to solve YouTube's challenges (ships deno.exe into the venv)
 deno
+# Tray icon for the sync server (tray.pyw)
+pystray
+Pillow

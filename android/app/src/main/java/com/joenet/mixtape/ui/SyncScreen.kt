@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
@@ -70,7 +71,8 @@ fun SyncScreen(vm: MainViewModel) {
         else -> 0f
     }
 
-    Scaffold(containerColor = Tape.Ink) { pad ->
+    // The app shell already handles the status and navigation bars.
+    Scaffold(containerColor = Tape.Ink, contentWindowInsets = WindowInsets(0, 0, 0, 0)) { pad ->
         Column(
             Modifier
                 .padding(pad)
@@ -80,8 +82,8 @@ fun SyncScreen(vm: MainViewModel) {
             IconButton(onClick = { vm.back() }, modifier = Modifier.offset(x = (-12).dp)) {
                 Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back", tint = Tape.Cream)
             }
-            Text("SYNC FROM PC", style = MaterialTheme.typography.displaySmall, color = Tape.Orange)
-            Text("PULL NEW SONGS OVER WI-FI", style = MaterialTheme.typography.labelMedium, color = Tape.Dust)
+            Text("Sync from PC", style = MaterialTheme.typography.headlineMedium, color = Tape.Cream)
+            Text("Get new songs from your PC over Wi-Fi", style = MaterialTheme.typography.bodyMedium, color = Tape.Dust)
             Spacer(Modifier.height(20.dp))
             Cassette(
                 label = "From my PC",
@@ -91,13 +93,22 @@ fun SyncScreen(vm: MainViewModel) {
                     .align(Alignment.CenterHorizontally),
                 progress = tapeProgress,
                 spinning = busy,
-                footLeft = if (working != null) "● REC" else "SIDE A",
+                footLeft = "SIDE A",
                 footRight = working?.takeIf { it.total > 0 }?.let { "${it.done}/${it.total}" }.orEmpty(),
             )
-            Spacer(Modifier.height(24.dp))
-            Step("01", "Run sync.bat on your PC (music-player\\importer).")
-            Step("02", "Keep this phone on the same Wi-Fi as the PC.")
-            Step("03", "Tap Find PC (or type the address sync.bat shows), then Sync now.")
+            // The deck's REC light: lit (orange) only while songs are actually being copied.
+            Text(
+                "● REC",
+                style = Legend,
+                color = if (working != null) Tape.Orange else Tape.Line,
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .padding(top = 8.dp),
+            )
+            Spacer(Modifier.height(16.dp))
+            Step("1", "Run sync.bat on your PC (mixtape\\importer), or install-autosync.ps1 once to keep it in the tray.")
+            Step("2", "Keep this phone on the same Wi-Fi as the PC.")
+            Step("3", "Tap Find PC (or type the address sync.bat shows), then Sync now.")
             Spacer(Modifier.height(16.dp))
             OutlinedTextField(
                 value = address,
@@ -109,20 +120,20 @@ fun SyncScreen(vm: MainViewModel) {
                 textStyle = MaterialTheme.typography.bodyLarge.copy(fontFamily = Mono),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Done),
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = Tape.Orange,
+                    focusedBorderColor = Tape.Cream,
                     unfocusedBorderColor = Tape.Line,
-                    focusedLabelColor = Tape.Orange,
-                    cursorColor = Tape.Orange,
+                    focusedLabelColor = Tape.Cream,
+                    cursorColor = Tape.Cream,
                 ),
                 modifier = Modifier.fillMaxWidth(),
             )
             Spacer(Modifier.height(14.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedButton(onClick = { SyncManager.findPc(context) { address = it } }, enabled = !busy) {
-                    Text("FIND PC")
+                    Text("Find PC")
                 }
                 Button(onClick = { SyncManager.sync(context, address) { vm.reloadLibrary() } }, enabled = !busy) {
-                    Text("SYNC NOW")
+                    Text("Sync now")
                 }
             }
             Spacer(Modifier.height(16.dp))
@@ -130,7 +141,8 @@ fun SyncScreen(vm: MainViewModel) {
             Spacer(Modifier.height(12.dp))
             Text(
                 "New songs go to Music/<playlist name>/. Songs you already have are skipped, " +
-                    "and nothing on the phone is ever deleted.",
+                    "and nothing on the phone is ever deleted. After the first sync, new songs also " +
+                    "arrive by themselves while the phone charges on Wi-Fi (Settings > Sync automatically).",
                 style = MaterialTheme.typography.bodySmall,
                 color = Tape.Dust,
             )
@@ -142,7 +154,7 @@ fun SyncScreen(vm: MainViewModel) {
 @Composable
 private fun Step(number: String, text: String) {
     Row(Modifier.padding(vertical = 5.dp), verticalAlignment = Alignment.Top) {
-        Text(number, fontFamily = Mono, fontSize = 14.sp, color = Tape.Orange, modifier = Modifier.width(34.dp))
+        Text(number, fontFamily = Mono, fontSize = 14.sp, color = Tape.Dust, modifier = Modifier.width(26.dp))
         Text(text, style = MaterialTheme.typography.bodyMedium, color = Tape.Cream)
     }
 }
@@ -167,9 +179,9 @@ private fun StatusCard(state: State) {
                 is State.Working -> {
                     if (state.total > 0) {
                         Text(
-                            "RECORDING ${state.done + 1} OF ${state.total}",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = Tape.Orange,
+                            "Copying ${state.done + 1} of ${state.total}",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = Tape.Cream,
                         )
                         LinearProgressIndicator(
                             progress = { ((state.done + state.fileFraction) / state.total).coerceIn(0f, 1f) },
@@ -181,23 +193,26 @@ private fun StatusCard(state: State) {
                         LinearProgressIndicator(Modifier.fillMaxWidth(), color = Tape.Orange, trackColor = Tape.Line)
                     }
                     Text(state.message, style = MaterialTheme.typography.bodyMedium, color = Tape.Cream, maxLines = 2)
-                    TextButton(onClick = SyncManager::cancel) { Text("CANCEL") }
+                    TextButton(onClick = SyncManager::cancel) { Text("Cancel") }
                 }
                 is State.Finished -> {
                     Text(
                         when (state.added) {
-                            0 -> "ALREADY UP TO DATE"
-                            1 -> "ADDED 1 NEW SONG"
-                            else -> "ADDED ${state.added} NEW SONGS"
+                            0 -> "Already up to date"
+                            1 -> "Added 1 new song"
+                            else -> "Added ${state.added} new songs"
                         },
-                        style = MaterialTheme.typography.labelLarge,
-                        color = Tape.Orange,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Tape.Cream,
                     )
                     if (state.alreadyHad > 0) {
                         Text(
                             "${songCount(state.alreadyHad)} ${if (state.alreadyHad == 1) "was" else "were"} already on the phone.",
                             color = Tape.Cream,
                         )
+                    }
+                    if (state.lyrics > 0) {
+                        Text("Got lyrics for ${songCount(state.lyrics)}.", color = Tape.Cream)
                     }
                     if (state.failed.isNotEmpty()) {
                         Text("${state.failed.size} failed:", color = MaterialTheme.colorScheme.error)

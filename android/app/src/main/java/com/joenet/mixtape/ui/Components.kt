@@ -6,7 +6,9 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import android.util.LruCache
 import android.util.Size
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -14,33 +16,36 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.SkipNext
-import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -51,6 +56,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -61,16 +67,26 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.ImageShader
+import androidx.compose.ui.graphics.ShaderBrush
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.palette.graphics.Palette
@@ -80,8 +96,11 @@ import com.joenet.mixtape.Song
 import com.joenet.mixtape.formatDuration
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Collections
+import kotlin.math.abs
+import kotlin.math.roundToInt
 
 /** Cover art thumbnails from MediaStore (it reads the picture the importer embeds in each MP3). */
 object ArtCache {
@@ -104,14 +123,17 @@ object ArtCache {
     }
 }
 
-/** A color pulled from the cover (for the now-playing backdrop); falls back to tape orange. */
+/**
+ * The cover's muted color, used faintly behind Now Playing like light falling on the deck.
+ * (Muted, not vibrant: a vibrant wash is the stock streaming look and fights the tape orange.)
+ */
 @Composable
 fun rememberArtTint(uri: Uri?): Color {
     val context = LocalContext.current
-    val tint by produceState(Tape.Orange, uri) {
+    val tint by produceState(Tape.DeckHigh, uri) {
         val img = uri?.let { ArtCache.load(context, it, 144) }
         if (img == null) {
-            value = Tape.Orange
+            value = Tape.DeckHigh
             return@produceState
         }
         value = withContext(Dispatchers.Default) {
@@ -119,9 +141,9 @@ fun rememberArtTint(uri: Uri?): Color {
                 var bmp = img.asAndroidBitmap()
                 if (bmp.config == Bitmap.Config.HARDWARE) bmp = bmp.copy(Bitmap.Config.ARGB_8888, false)
                 val palette = Palette.from(bmp).generate()
-                val swatch = palette.vibrantSwatch ?: palette.dominantSwatch
+                val swatch = palette.mutedSwatch ?: palette.darkMutedSwatch ?: palette.dominantSwatch
                 swatch?.let { Color(it.rgb) }
-            }.getOrNull() ?: Tape.Orange
+            }.getOrNull() ?: Tape.DeckHigh
         }
     }
     return tint
@@ -173,6 +195,27 @@ fun SongArt(
     }
 }
 
+/** A round badge with an artist's initial, in a stable label colour. */
+@Composable
+fun ArtistAvatar(name: String, size: Dp, modifier: Modifier = Modifier) {
+    val c = Tape.labelColor(name)
+    Box(
+        modifier
+            .size(size)
+            .clip(CircleShape)
+            .background(Brush.linearGradient(listOf(c, c.copy(alpha = 0.6f)))),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            name.trim().firstOrNull()?.uppercase() ?: "?",
+            fontFamily = Barlow,
+            fontWeight = FontWeight.Bold,
+            fontSize = (size.value * 0.45f).sp,
+            color = Tape.Ink.copy(alpha = 0.8f),
+        )
+    }
+}
+
 /** Three bouncing bars next to the song that's playing; frozen while paused. */
 @Composable
 fun EqualizerBars(animating: Boolean, modifier: Modifier = Modifier, color: Color = Tape.Orange) {
@@ -181,23 +224,46 @@ fun EqualizerBars(animating: Boolean, modifier: Modifier = Modifier, color: Colo
         t.animateFloat(0.2f, 1f, infiniteRepeatable(tween(ms, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "bar")
     }
     val rest = floatArrayOf(0.45f, 0.8f, 0.3f)
+    val live = animating && !rememberReduceMotion()
     Canvas(modifier.size(18.dp, 16.dp)) {
         val bw = size.width / 5f
         bars.forEachIndexed { i, anim ->
-            val hf = if (animating) anim.value else rest[i]
+            val hf = if (live) anim.value else rest[i]
             val bh = size.height * hf
             drawRoundRect(color, topLeft = Offset(i * 2 * bw, size.height - bh), size = androidx.compose.ui.geometry.Size(bw, bh), cornerRadius = CornerRadius(bw / 2))
         }
     }
 }
 
-/** Track-listing row: optional "01" number, cover, title/artist, mono duration (or bars while current). */
+/**
+ * Track-listing row: optional "01" number, cover, title/artist, mono duration (or bars while
+ * current). Long-press opens the song's actions.
+ */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun SongRow(song: Song, current: Boolean, playing: Boolean, number: Int? = null, onClick: () -> Unit) {
+fun SongRow(
+    song: Song,
+    current: Boolean,
+    playing: Boolean,
+    number: Int? = null,
+    onLongClick: (() -> Unit)? = null,
+    trailing: (@Composable () -> Unit)? = null,
+    onClick: () -> Unit,
+) {
+    val haptics = LocalHapticFeedback.current
     Row(
         Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .combinedClickable(
+                onClick = onClick,
+                onLongClickLabel = if (onLongClick != null) "More actions" else null,
+                onLongClick = onLongClick?.let { l ->
+                    {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        l()
+                    }
+                },
+            )
             .padding(horizontal = 16.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -230,11 +296,36 @@ fun SongRow(song: Song, current: Boolean, playing: Boolean, number: Int? = null,
             )
         }
         Spacer(Modifier.width(12.dp))
-        if (current) {
-            EqualizerBars(animating = playing)
-        } else {
-            Text(formatDuration(song.durationMs), fontFamily = Mono, fontSize = 12.sp, color = Tape.Dust)
+        when {
+            trailing != null -> trailing()
+            current -> EqualizerBars(animating = playing)
+            else -> Text(formatDuration(song.durationMs), fontFamily = Mono, fontSize = 12.sp, color = Tape.Dust)
         }
+    }
+}
+
+/** Section title for shelves and result groups. */
+@Composable
+fun SectionTitle(text: String, modifier: Modifier = Modifier, action: (@Composable () -> Unit)? = null) {
+    Row(
+        modifier
+            .fillMaxWidth()
+            .padding(start = 16.dp, end = 8.dp, top = 18.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(text, style = MaterialTheme.typography.titleLarge, color = Tape.Cream, modifier = Modifier.weight(1f))
+        action?.invoke()
+    }
+}
+
+/** A horizontal row of cards, as in the streaming apps' home shelves. */
+@Composable
+fun <T> Shelf(items: List<T>, key: (T) -> Any, content: @Composable (T) -> Unit) {
+    LazyRow(
+        contentPadding = PaddingValues(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        items(items.size, key = { key(items[it]) }) { content(items[it]) }
     }
 }
 
@@ -252,65 +343,118 @@ fun rememberPlaybackPosition(player: PlayerUi): Long {
     return pos
 }
 
+/**
+ * The mini player above the tab bar. Tap or drag up to open Now Playing (it follows the finger);
+ * swipe left / right for next / previous.
+ */
 @Composable
-fun MiniPlayer(player: PlayerUi, onOpen: () -> Unit) {
+fun MiniPlayer(
+    player: PlayerUi,
+    onOpen: () -> Unit,
+    onSheetDrag: (dy: Float) -> Unit,
+    onSheetRelease: (velocityY: Float) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     if (!player.hasSong) return
     val md = player.metadata
     val pos = rememberPlaybackPosition(player)
     val fraction = if (player.durationMs > 0) (pos.toFloat() / player.durationMs).coerceIn(0f, 1f) else 0f
-    Surface(color = Tape.Deck, modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.navigationBarsPadding()) {
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .height(2.dp)
-                    .background(Tape.Line)
-            ) {
-                Box(
-                    Modifier
-                        .fillMaxWidth(fraction)
-                        .fillMaxHeight()
-                        .background(Tape.Orange)
-                )
-            }
+    val scope = rememberCoroutineScope()
+    val slide = remember { Animatable(0f) }
+    val drag by rememberUpdatedState(onSheetDrag)
+    val release by rememberUpdatedState(onSheetRelease)
+
+    Surface(color = Tape.Deck, modifier = modifier.fillMaxWidth()) {
+        Column {
+            TapeStrip(fraction, moving = player.isPlaying)
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .clickable(onClick = onOpen)
+                    .semantics {
+                        customActions = listOf(
+                            CustomAccessibilityAction("Next song") { player.next(); true },
+                            CustomAccessibilityAction("Previous song") { player.previous(); true },
+                        )
+                    }
+                    .clickable(onClickLabel = "Open player", onClick = onOpen)
+                    .pointerInput(Unit) {
+                        var axis = 0 // 0 undecided, 1 horizontal (skip), 2 vertical (open)
+                        var dx = 0f
+                        val tracker = VelocityTracker()
+                        detectDragGestures(
+                            onDragStart = {
+                                axis = 0
+                                dx = 0f
+                                tracker.resetTracking()
+                            },
+                            onDrag = { change, amount ->
+                                change.consume()
+                                if (axis == 0) axis = if (abs(amount.x) > abs(amount.y)) 1 else 2
+                                tracker.addPosition(change.uptimeMillis, change.position)
+                                if (axis == 1) {
+                                    dx += amount.x
+                                    scope.launch { slide.snapTo(dx) }
+                                } else {
+                                    drag(amount.y)
+                                }
+                            },
+                            onDragEnd = {
+                                if (axis == 1) {
+                                    val threshold = size.width * 0.22f
+                                    when {
+                                        dx < -threshold -> player.next()
+                                        dx > threshold -> player.previous()
+                                    }
+                                    scope.launch { slide.animateTo(0f, tween(220)) }
+                                } else if (axis == 2) {
+                                    release(tracker.calculateVelocity().y)
+                                }
+                            },
+                            onDragCancel = {
+                                scope.launch { slide.animateTo(0f, tween(220)) }
+                                if (axis == 2) release(0f)
+                            },
+                        )
+                    }
                     .padding(start = 12.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                SongArt(
-                    player.mediaId?.let(Uri::parse),
-                    Modifier.size(44.dp),
-                    seed = md.extras?.getString(Song.EXTRA_FOLDER).orEmpty(),
-                    artworkData = md.artworkData,
-                )
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        md.title?.toString().orEmpty(),
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = Tape.Cream,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        md.artist?.toString().orEmpty(),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Tape.Dust,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                FilledIconButton(
-                    onClick = player::playPause,
-                    colors = IconButtonDefaults.filledIconButtonColors(containerColor = Tape.Orange, contentColor = Tape.Ink),
-                    modifier = Modifier.size(42.dp),
+                Row(
+                    Modifier
+                        .weight(1f)
+                        .offset { IntOffset(slide.value.roundToInt(), 0) },
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    SongArt(
+                        player.mediaId?.let(Uri::parse),
+                        Modifier.size(44.dp),
+                        seed = player.currentFolder,
+                        artworkData = md.artworkData,
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            md.title?.toString().orEmpty(),
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = Tape.Cream,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            md.artist?.toString().orEmpty(),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Tape.Dust,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+                IconButton(onClick = player::playPause) {
                     Icon(
                         if (player.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
                         contentDescription = if (player.isPlaying) "Pause" else "Play",
+                        tint = Tape.Cream,
+                        modifier = Modifier.size(30.dp),
                     )
                 }
                 IconButton(onClick = { player.next() }) {
@@ -318,6 +462,56 @@ fun MiniPlayer(player: PlayerUi, onOpen: () -> Unit) {
                 }
             }
         }
+    }
+}
+
+/**
+ * A barely-there brushed-plastic texture for the deck's background: horizontal streaks of noise,
+ * generated once and tiled.
+ */
+@Composable
+fun rememberBrushedPlastic(): Brush = remember {
+    val w = 256
+    val h = 64
+    val rnd = java.util.Random(7)
+    val px = IntArray(w * h)
+    for (y in 0 until h) {
+        val row = rnd.nextFloat()                   // each row gets its own sheen...
+        for (x in 0 until w) {
+            val v = 0.6f * row + 0.4f * rnd.nextFloat() // ...plus fine grain, so it reads as brushed
+            val a = (v * 14).toInt()                 // alpha 0..14 of 255: almost invisible
+            px[y * w + x] = (a shl 24) or 0xFFFFFF
+        }
+    }
+    val bmp = Bitmap.createBitmap(px, w, h, Bitmap.Config.ARGB_8888).asImageBitmap()
+    ShaderBrush(ImageShader(bmp, TileMode.Repeated, TileMode.Repeated))
+}
+
+/**
+ * The mini player's progress: a thin strip of brown tape. The played part is orange (it's live),
+ * and faint splice marks drift left to right while playing, like tape running between the reels.
+ */
+@Composable
+fun TapeStrip(fraction: Float, moving: Boolean, modifier: Modifier = Modifier) {
+    val animate = moving && !rememberReduceMotion()
+    val phase = if (animate) {
+        val t = rememberInfiniteTransition(label = "tape")
+        t.animateFloat(0f, 1f, infiniteRepeatable(tween(1400, easing = LinearEasing)), label = "phase")
+    } else null
+    Canvas(
+        modifier
+            .fillMaxWidth()
+            .height(3.dp)
+    ) {
+        drawRect(Tape.TapeBrown)
+        val gap = 14.dp.toPx()
+        val shift = (phase?.value ?: 0f) * gap
+        var x = -gap + shift
+        while (x < size.width) {
+            drawRect(Tape.TapeEdge, topLeft = Offset(x, 0f), size = androidx.compose.ui.geometry.Size(2.dp.toPx(), size.height))
+            x += gap
+        }
+        drawRect(Tape.Orange, size = androidx.compose.ui.geometry.Size(size.width * fraction.coerceIn(0f, 1f), size.height))
     }
 }
 
@@ -375,7 +569,7 @@ fun TapeSeekBar(
     }
 }
 
-/** Pill toggle used for the Songs / Playlists switch. */
+/** Pill toggle used for section switches (Tapes / Artists / Songs). */
 @Composable
 fun Pill(text: String, selected: Boolean, onClick: () -> Unit) {
     Surface(
@@ -385,7 +579,7 @@ fun Pill(text: String, selected: Boolean, onClick: () -> Unit) {
         border = if (selected) null else BorderStroke(1.dp, Tape.Line),
     ) {
         Text(
-            text.uppercase(),
+            text,
             style = MaterialTheme.typography.labelLarge,
             color = if (selected) Tape.Ink else Tape.Dust,
             modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp),

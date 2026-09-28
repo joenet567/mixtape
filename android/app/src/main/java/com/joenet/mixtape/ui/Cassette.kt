@@ -1,15 +1,28 @@
 package com.joenet.mixtape.ui
 
 import android.net.Uri
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.unit.dp
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -55,7 +68,7 @@ import kotlin.math.sqrt
  * goes 0 -> 1, and at constant tape speed the emptier reel turns faster.
  */
 
-private const val RATIO = 1.58f
+const val CASSETTE_RATIO = 1.58f
 private const val HUB = 0.045f
 private const val PACK_MAX = 0.1f
 private const val TAPE_SPEED = 8f // degrees per second x reel radius (in W units)
@@ -63,8 +76,8 @@ private const val TAPE_SPEED = 8f // degrees per second x reel radius (in W unit
 private val Shell = Color(0xFF342D26)
 private val ShellDark = Color(0xFF1F1A16)
 private val Hole = Color(0xFF0B0908)
-private val TapeBrown = Color(0xFF3F2718)
-private val TapeEdge = Color(0xFF5E3C25)
+private val TapeBrown = Tape.TapeBrown
+private val TapeEdge = Tape.TapeEdge
 private val Rule = Color(0xFFCDBFA6)
 
 private fun packRadius(fill: Float) =
@@ -88,8 +101,10 @@ fun Cassette(
     val p by rememberUpdatedState(progress.coerceIn(0f, 1f))
     var angleL by remember { mutableFloatStateOf(0f) }
     var angleR by remember { mutableFloatStateOf(33f) }
-    LaunchedEffect(spinning) {
-        if (!spinning) return@LaunchedEffect
+    // "Remove animations" on: the reels stand still, but the tape packs still show progress.
+    val animate = !rememberReduceMotion()
+    LaunchedEffect(spinning, animate) {
+        if (!spinning || !animate) return@LaunchedEffect
         var last = withFrameNanos { it }
         while (true) {
             withFrameNanos { now ->
@@ -103,7 +118,7 @@ fun Cassette(
 
     BoxWithConstraints(
         modifier
-            .aspectRatio(RATIO)
+            .aspectRatio(CASSETTE_RATIO)
             .semantics { contentDescription = "Cassette: $label" }
     ) {
         val w = constraints.maxWidth.toFloat()
@@ -122,24 +137,24 @@ fun Cassette(
             label,
             style = TextStyle.Default,
             fontFamily = Marker,
-            fontSize = sp(0.066f),
+            fontSize = sp(0.092f),
             color = Tape.PaperInk,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = at(0.09f, 0.066f).width(dp(0.82f)),
+            modifier = at(0.09f, 0.052f).width(dp(0.82f)),
         )
         Text(
             "A",
             style = TextStyle.Default,
-            fontFamily = Condensed,
+            fontFamily = Barlow,
             fontWeight = FontWeight.Bold,
-            fontSize = sp(0.105f),
+            fontSize = sp(0.11f),
             color = Tape.PaperInk.copy(alpha = 0.85f),
-            modifier = at(0.1f, 0.218f),
+            modifier = at(0.095f, 0.214f),
         )
         if (footLeft.isNotEmpty() || footRight.isNotEmpty()) {
-            val foot = TextStyle(fontFamily = Mono, fontSize = sp(0.026f), color = Tape.PaperInk.copy(alpha = 0.7f))
-            Row(at(0f, 0.4f).width(dp(1f)).padding(horizontal = dp(0.09f))) {
+            val foot = Legend.copy(fontSize = sp(0.03f), letterSpacing = sp(0.004f), color = Tape.PaperInk.copy(alpha = 0.7f))
+            Row(at(0f, 0.394f).width(dp(1f)).padding(horizontal = dp(0.09f))) {
                 Text(footLeft, style = foot, maxLines = 1)
                 Spacer(Modifier.weight(1f))
                 Text(footRight, style = foot, maxLines = 1)
@@ -148,7 +163,110 @@ fun Cassette(
     }
 }
 
-private fun DrawScope.drawShell(labelColor: Color) {
+/**
+ * Side B of the tape: the cover art as the insert, cropped to the cassette's own frame, with the
+ * title and artist written along the spine. Shown by flipping the tape over (see [FlipTape]).
+ */
+@Composable
+fun TapeSideB(title: String, artist: String, art: Uri?, labelColor: Color, modifier: Modifier = Modifier, artworkData: ByteArray? = null) {
+    BoxWithConstraints(
+        modifier
+            .aspectRatio(CASSETTE_RATIO)
+            .semantics { contentDescription = "Side B: cover of $title by $artist" }
+    ) {
+        val w = constraints.maxWidth.toFloat()
+        val density = LocalDensity.current
+        fun sp(f: Float) = with(density) { (w * f).toSp() }
+        fun dp(f: Float) = with(density) { (w * f).toDp() }
+        val shape = RoundedCornerShape(dp(0.045f))
+        Box(
+            Modifier
+                .fillMaxSize()
+                .clip(shape)
+                .background(Brush.verticalGradient(listOf(Shell, ShellDark)))
+                .padding(dp(0.03f))
+        ) {
+            Column(Modifier.fillMaxSize()) {
+                // the insert: cover art, center-cropped to fill
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .clip(RoundedCornerShape(dp(0.015f)))
+                ) {
+                    SongArt(art, Modifier.fillMaxSize(), px = 1024, corner = 0.dp, seed = title, artworkData = artworkData)
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .background(Brush.verticalGradient(0.6f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.25f)))
+                    )
+                }
+                // the spine, written on in biro
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(top = dp(0.02f))
+                        .clip(RoundedCornerShape(dp(0.012f)))
+                        .background(Tape.Paper)
+                        .padding(horizontal = dp(0.03f), vertical = dp(0.004f)),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(
+                        Modifier
+                            .size(dp(0.05f))
+                            .background(labelColor, RoundedCornerShape(dp(0.008f))),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text("B", style = TextStyle.Default, fontFamily = Barlow, fontWeight = FontWeight.Bold, fontSize = sp(0.036f), color = Tape.PaperInk)
+                    }
+                    Text(
+                        "$title — $artist",
+                        style = TextStyle.Default,
+                        fontFamily = Marker,
+                        fontSize = sp(0.075f),
+                        color = Tape.PaperInk,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(start = dp(0.025f)),
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Turns the tape over in 3D: [front] (Side A, the cassette) when [flipped] is false, [back]
+ * (Side B) when true. The back is pre-rotated so it isn't mirrored.
+ */
+@Composable
+fun FlipTape(
+    flipped: Boolean,
+    modifier: Modifier = Modifier,
+    front: @Composable () -> Unit,
+    back: @Composable () -> Unit,
+) {
+    val still = rememberReduceMotion()
+    val rotation by animateFloatAsState(
+        if (flipped) 180f else 0f,
+        tween(if (still) 0 else 520, easing = FastOutSlowInEasing),
+        label = "flip",
+    )
+    Box(
+        modifier.graphicsLayer {
+            rotationY = rotation
+            cameraDistance = 14f * density
+        }
+    ) {
+        if (rotation <= 90f) {
+            front()
+        } else {
+            Box(Modifier.graphicsLayer { rotationY = 180f }) { back() }
+        }
+    }
+}
+
+internal fun DrawScope.drawShell(labelColor: Color) {
     val w = size.width
     val h = size.height
     fun f(x: Float) = x * w
@@ -189,7 +307,7 @@ private fun DrawScope.screw(c: Offset, r: Float) {
     drawLine(Color(0xFF221D19), Offset(c.x - r * 0.6f, c.y - r * 0.6f), Offset(c.x + r * 0.6f, c.y + r * 0.6f), strokeWidth = r * 0.35f)
 }
 
-private fun DrawScope.drawWindow(progress: Float, angleL: Float, angleR: Float) {
+internal fun DrawScope.drawWindow(progress: Float, angleL: Float, angleR: Float) {
     val w = size.width
     fun f(x: Float) = x * w
     val win = Rect(f(0.27f), f(0.21f), f(0.73f), f(0.365f))
@@ -227,7 +345,7 @@ private fun DrawScope.reel(c: Offset, packR: Float, angle: Float, w: Float) {
     }
 }
 
-private fun DrawScope.drawSticker(img: ImageBitmap) {
+internal fun DrawScope.drawSticker(img: ImageBitmap) {
     val w = size.width
     val side = w * 0.155f
     val topLeft = Offset(w * 0.765f, w * 0.2875f - side / 2f)

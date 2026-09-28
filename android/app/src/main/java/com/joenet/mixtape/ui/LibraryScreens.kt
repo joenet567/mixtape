@@ -67,6 +67,8 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -120,7 +122,7 @@ fun MixtapeApp(vm: MainViewModel, onRequestPermission: () -> Unit) {
 
 private fun formatLong(ms: Long): String {
     val minutes = ms / 60_000
-    return if (minutes >= 60) "${minutes / 60}H ${minutes % 60}M" else "$minutes MIN"
+    return if (minutes >= 60) "${minutes / 60} h ${minutes % 60} min" else "$minutes min"
 }
 
 @Composable
@@ -136,7 +138,8 @@ private fun LibraryScreen(vm: MainViewModel) {
         }
     }
     val stats = remember(songs, vm.playlists) {
-        "${songs.size} tracks · ${vm.playlists.size} tapes · ${formatLong(songs.sumOf { it.durationMs })}".uppercase()
+        "${songCount(songs.size)}, ${vm.playlists.size} ${if (vm.playlists.size == 1) "tape" else "tapes"}, " +
+            formatLong(songs.sumOf { it.durationMs })
     }
 
     Scaffold(
@@ -154,8 +157,8 @@ private fun LibraryScreen(vm: MainViewModel) {
                     SearchField(query, { query = it }, Modifier.weight(1f))
                 } else {
                     Column(Modifier.weight(1f)) {
-                        Text("MIXTAPE", style = MaterialTheme.typography.displaySmall, color = Tape.Orange)
-                        Text(stats, style = MaterialTheme.typography.labelMedium, color = Tape.Dust)
+                        Text("MIXTAPE", style = MaterialTheme.typography.displaySmall, color = Tape.Cream)
+                        Text(stats, style = MaterialTheme.typography.bodyMedium, color = Tape.Dust)
                     }
                 }
                 IconButton(onClick = {
@@ -230,12 +233,12 @@ private fun SongList(songs: List<Song>, player: PlayerUi, searching: Boolean) {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (searching) {
-                    Text("${songs.size} RESULTS", style = MaterialTheme.typography.labelMedium, color = Tape.Dust)
+                    Text(if (songs.size == 1) "1 result" else "${songs.size} results", style = MaterialTheme.typography.bodyMedium, color = Tape.Dust)
                 } else {
                     Button(onClick = { player.shuffleAll(songs) }) {
                         Icon(Icons.Rounded.Shuffle, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text("SHUFFLE ALL")
+                        Text("Shuffle all")
                     }
                 }
             }
@@ -257,18 +260,20 @@ private fun PlaylistGrid(playlists: List<Playlist>, player: PlayerUi, onOpen: (P
         modifier = Modifier.fillMaxSize(),
     ) {
         items(playlists, key = { it.key }) { pl ->
+            // The name is already handwritten on the label (cut off at grid size), so only the count and
+            // length go underneath; TalkBack reads the full name.
             Column(
                 Modifier
                     .clip(MaterialTheme.shapes.medium)
-                    .clickable { onOpen(pl) }
+                    .clickable(onClickLabel = "Open ${pl.name}") { onOpen(pl) }
+                    .semantics(mergeDescendants = true) { contentDescription = pl.name }
                     .padding(4.dp)
             ) {
                 PlaylistTape(pl, player, current = currentFolder == pl.name, Modifier.fillMaxWidth())
-                Spacer(Modifier.height(8.dp))
-                Text(pl.name, style = MaterialTheme.typography.bodyLarge, color = Tape.Cream, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Spacer(Modifier.height(6.dp))
                 Text(
-                    "${songCount(pl.songs.size)} · ${formatLong(pl.durationMs)}".uppercase(),
-                    style = MaterialTheme.typography.labelSmall,
+                    "${songCount(pl.songs.size)}, ${formatLong(pl.durationMs)}",
+                    style = MaterialTheme.typography.bodySmall,
                     color = Tape.Dust,
                 )
             }
@@ -341,8 +346,8 @@ private fun PlaylistScreen(vm: MainViewModel, key: String) {
                     Spacer(Modifier.height(20.dp))
                     Text(pl.name, style = MaterialTheme.typography.headlineSmall, color = Tape.Cream)
                     Text(
-                        "${songCount(pl.songs.size)} · ${formatLong(pl.durationMs)}".uppercase(),
-                        style = MaterialTheme.typography.labelMedium,
+                        "${songCount(pl.songs.size)}, ${formatLong(pl.durationMs)}",
+                        style = MaterialTheme.typography.bodyMedium,
                         color = Tape.Dust,
                     )
                     Spacer(Modifier.height(14.dp))
@@ -350,12 +355,12 @@ private fun PlaylistScreen(vm: MainViewModel, key: String) {
                         Button(onClick = { player.playInOrder(pl.songs) }) {
                             Icon(Icons.Rounded.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(6.dp))
-                            Text("PLAY")
+                            Text("Play")
                         }
                         OutlinedButton(onClick = { player.shuffleAll(pl.songs) }) {
                             Icon(Icons.Rounded.Shuffle, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(6.dp))
-                            Text("SHUFFLE")
+                            Text("Shuffle")
                         }
                     }
                     Spacer(Modifier.height(10.dp))
@@ -384,7 +389,7 @@ private fun EmptyLibrary(onSync: () -> Unit) {
     ) {
         Cassette("Blank tape", Tape.Mustard, Modifier.fillMaxWidth(0.8f), footLeft = "C-60", footRight = "SIDE A")
         Spacer(Modifier.height(28.dp))
-        Text("NO MUSIC YET", style = MaterialTheme.typography.titleLarge, color = Tape.Cream)
+        Text("No music yet", style = MaterialTheme.typography.titleLarge, color = Tape.Cream)
         Spacer(Modifier.height(8.dp))
         Text(
             "Import a YouTube playlist with import.bat on your PC, then sync it here over Wi-Fi. " +
@@ -393,7 +398,7 @@ private fun EmptyLibrary(onSync: () -> Unit) {
             color = Tape.Dust,
         )
         Spacer(Modifier.height(24.dp))
-        Button(onClick = onSync) { Text("SYNC FROM PC") }
+        Button(onClick = onSync) { Text("Sync from PC") }
     }
 }
 
@@ -411,7 +416,7 @@ private fun PermissionScreen(onRequest: () -> Unit) {
         ) {
             Cassette("Mixtape", Tape.Orange, Modifier.fillMaxWidth(0.8f), footLeft = "C-90", footRight = "SIDE A")
             Spacer(Modifier.height(28.dp))
-            Text("LET'S FIND YOUR MUSIC", style = MaterialTheme.typography.titleLarge, color = Tape.Cream)
+            Text("Let's find your music", style = MaterialTheme.typography.titleLarge, color = Tape.Cream)
             Spacer(Modifier.height(8.dp))
             Text(
                 "Mixtape plays the MP3 files stored on this phone, so it needs permission to read them.",
@@ -419,12 +424,12 @@ private fun PermissionScreen(onRequest: () -> Unit) {
                 color = Tape.Dust,
             )
             Spacer(Modifier.height(24.dp))
-            Button(onClick = onRequest) { Text("ALLOW ACCESS") }
+            Button(onClick = onRequest) { Text("Allow access") }
             TextButton(onClick = {
                 context.startActivity(
                     Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
                 )
-            }) { Text("OPEN APP SETTINGS", color = Tape.Dust) }
+            }) { Text("Open app settings", color = Tape.Dust) }
         }
     }
 }

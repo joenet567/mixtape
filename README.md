@@ -46,7 +46,7 @@ Options (append to `import.bat …`):
 
 ## App
 
-The look is a cassette deck. It's always dark: espresso-black shell, cream "paper" text, tape-orange accent. Headings are condensed label type, times use a monospace tape counter, and playlist names are handwritten on the tape labels.
+The look is a cassette deck. It's always dark: espresso-black shell and cream "paper" text. Orange means something is live right now (the playing song, progress, the play light, REC) and is used for nothing else. Headings and printed legends (SIDE A, C-90, REC) are Barlow Condensed, times use a monospace tape counter, playlist names are written in biro (Reenie Beanie) on the tape labels, and everything else is plain sentence case.
 
 - **Playlists are tapes.** Each one is drawn as a cassette with its own label color, its name handwritten on the label, and its first cover as a sticker. The playlist that's playing has turning reels.
 - **Now playing** shows the tape transport. The reels wind tape from left to right as the song plays, and the emptier reel spins faster, like a real deck. Tap the cassette (or the disc button) to flip to the full cover art. The background is tinted from the cover's colors.
@@ -81,7 +81,7 @@ powershell -ExecutionPolicy Bypass -File android\build-apk.ps1         # -> Mixt
 
 The release APK is signed with the local debug key in `D:\Android\user-home\debug.keystore`. Keep that file: an APK signed with a different key can't install over the old one (you'd have to uninstall first, which loses the saved queue but none of your music).
 
-Stack: Kotlin 2.1, Jetpack Compose (Material 3 with a custom palette, system condensed/handwritten/mono fonts, nothing downloaded), Media3 1.5 ExoPlayer + MediaSession, AndroidX Palette, minSdk 29 / targetSdk 35. Source is in `android/app/src/main/java/com/joenet/mixtape/`:
+Stack: Kotlin 2.1, Jetpack Compose (Material 3 with a custom palette; body text in the system Roboto, plus two bundled OFL fonts, [Reenie Beanie](https://fonts.google.com/specimen/Reenie+Beanie) and [Barlow Condensed](https://fonts.google.com/specimen/Barlow+Condensed), about 370 KB inside the APK, so nothing is downloaded at runtime; licenses in `android/app/src/main/assets/licenses/`), Media3 1.5 ExoPlayer + MediaSession, AndroidX Palette, minSdk 29 / targetSdk 35. Source is in `android/app/src/main/java/com/joenet/mixtape/`:
 
 | File | Role |
 |---|---|

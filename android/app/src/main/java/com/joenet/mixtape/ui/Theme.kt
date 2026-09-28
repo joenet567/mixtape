@@ -8,14 +8,17 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.DeviceFontFamilyName
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.joenet.mixtape.R
 
-/** Cassette-deck palette: espresso-black shell, cream paper labels, tape-orange accent. Always dark. */
+/**
+ * Cassette-deck palette: espresso-black shell, cream paper labels, tape-orange accent. Always dark.
+ * Orange means "live": the playing song, progress, the play key's light, REC. Nothing else.
+ */
 object Tape {
     val Ink = Color(0xFF14110E)
     val Deck = Color(0xFF1D1915)
@@ -31,26 +34,40 @@ object Tape {
     val Brick = Color(0xFFD1495B)
     val Sage = Color(0xFF8AA37B)
     val Sky = Color(0xFF5DA9E9)
+    val TapeBrown = Color(0xFF3F2718)
+    val TapeEdge = Color(0xFF5E3C25)
 
-    private val labels = listOf(Orange, Mustard, Teal, Brick, Sage, Sky)
+    val labels = listOf(Orange, Mustard, Teal, Brick, Sage, Sky)
 
     /** Stable per-playlist label color, so each tape keeps its look. */
     fun labelColor(key: String): Color = labels[(key.lowercase().hashCode() and 0x7fffffff) % labels.size]
 }
 
-/** Condensed "printed label" face, a marker hand for handwritten labels, monospace for the tape counter. */
-val Condensed = FontFamily(
-    Font(DeviceFontFamilyName("sans-serif-condensed"), FontWeight.Normal),
-    Font(DeviceFontFamilyName("sans-serif-condensed"), FontWeight.Bold),
+/** Biro on a tape label: cassette labels, the Side B spine, folder names. (Reenie Beanie, OFL) */
+val Marker = FontFamily(Font(R.font.reenie_beanie))
+
+/** Printed hardware legends and headings. (Barlow Condensed, OFL) */
+val Barlow = FontFamily(
+    Font(R.font.barlow_condensed_semibold, FontWeight.SemiBold),
+    Font(R.font.barlow_condensed_bold, FontWeight.Bold),
 )
-val Marker = FontFamily(Font(DeviceFontFamilyName("casual")))
+
+/** The tape counter. */
 val Mono = FontFamily.Monospace
 
+/**
+ * Text that would be printed on real hardware: SIDE A, C-90, REC, key legends. The only place
+ * all-caps and wide letter spacing are allowed; everything else is sentence case.
+ */
+val Legend = TextStyle(fontFamily = Barlow, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, letterSpacing = 1.5.sp)
+
+// primary is cream, not orange: Material paints buttons, focus and switches with it, and none of
+// those are "live". Orange is applied explicitly where something is happening right now.
 private val colors = darkColorScheme(
-    primary = Tape.Orange,
+    primary = Tape.Cream,
     onPrimary = Tape.Ink,
-    primaryContainer = Color(0xFF4A2112),
-    onPrimaryContainer = Color(0xFFFFB59A),
+    primaryContainer = Tape.DeckHigh,
+    onPrimaryContainer = Tape.Cream,
     secondary = Tape.Mustard,
     onSecondary = Tape.Ink,
     secondaryContainer = Tape.DeckHigh,
@@ -76,15 +93,14 @@ private val colors = darkColorScheme(
     onErrorContainer = Color(0xFFFFB3B9),
 )
 
+// Headings in Barlow Condensed; body and labels stay on the system sans (Roboto) in sentence case.
 private val type = Typography().run {
     copy(
-        displaySmall = TextStyle(fontFamily = Condensed, fontWeight = FontWeight.Bold, fontSize = 34.sp, letterSpacing = 5.sp),
-        headlineSmall = TextStyle(fontFamily = Condensed, fontWeight = FontWeight.Bold, fontSize = 26.sp, lineHeight = 30.sp),
-        titleLarge = TextStyle(fontFamily = Condensed, fontWeight = FontWeight.Bold, fontSize = 22.sp, letterSpacing = 1.sp),
+        displaySmall = TextStyle(fontFamily = Barlow, fontWeight = FontWeight.Bold, fontSize = 34.sp, letterSpacing = 4.sp),
+        headlineMedium = TextStyle(fontFamily = Barlow, fontWeight = FontWeight.Bold, fontSize = 30.sp, lineHeight = 34.sp),
+        headlineSmall = TextStyle(fontFamily = Barlow, fontWeight = FontWeight.Bold, fontSize = 26.sp, lineHeight = 30.sp),
+        titleLarge = TextStyle(fontFamily = Barlow, fontWeight = FontWeight.Bold, fontSize = 22.sp, lineHeight = 26.sp),
         titleMedium = titleMedium.copy(fontWeight = FontWeight.Medium),
-        labelLarge = TextStyle(fontFamily = Condensed, fontWeight = FontWeight.Bold, fontSize = 14.sp, letterSpacing = 1.5.sp),
-        labelMedium = TextStyle(fontFamily = Condensed, fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 1.5.sp),
-        labelSmall = TextStyle(fontFamily = Condensed, fontSize = 11.sp, letterSpacing = 1.5.sp),
     )
 }
 
@@ -98,5 +114,7 @@ private val shapes = Shapes(
 
 @Composable
 fun MixtapeTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = colors, typography = type, shapes = shapes, content = content)
+    MaterialTheme(colorScheme = colors, typography = type, shapes = shapes) {
+        ProvideReduceMotion(content)
+    }
 }

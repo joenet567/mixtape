@@ -56,6 +56,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -71,7 +73,7 @@ import com.joenet.mixtape.songCount
 @Composable
 fun NowPlayingScreen(player: PlayerUi, onClose: () -> Unit) {
     var showQueue by remember { mutableStateOf(false) }
-    var showCover by rememberSaveable { mutableStateOf(false) }
+    var flipped by rememberSaveable { mutableStateOf(false) }
     val md = player.metadata
     val uri = player.mediaId?.let(Uri::parse)
     val folder = md.extras?.getString(Song.EXTRA_FOLDER) ?: md.albumTitle?.toString().orEmpty()
@@ -82,11 +84,13 @@ fun NowPlayingScreen(player: PlayerUi, onClose: () -> Unit) {
     val shownPos = (fraction * duration).toLong()
     val tint by animateColorAsState(rememberArtTint(uri), tween(700), label = "tint")
 
+    val plastic = rememberBrushedPlastic()
     Box(
         Modifier
             .fillMaxSize()
             .background(Tape.Ink)
-            .background(Brush.verticalGradient(0f to tint.copy(alpha = 0.45f), 0.7f to Color.Transparent))
+            .background(plastic)
+            .background(Brush.verticalGradient(0f to tint.copy(alpha = 0.2f), 0.75f to Color.Transparent))
     ) {
         Column(
             Modifier
@@ -104,24 +108,18 @@ fun NowPlayingScreen(player: PlayerUi, onClose: () -> Unit) {
                 IconButton(onClick = onClose) {
                     Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = "Close player", tint = Tape.Cream)
                 }
-                Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("PLAYING FROM", style = MaterialTheme.typography.labelSmall, color = Tape.Dust)
-                    Text(
-                        folder,
-                        fontFamily = Marker,
-                        fontSize = 17.sp,
-                        color = Tape.Cream,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                IconButton(onClick = { showCover = !showCover }) {
-                    if (showCover) {
-                        Icon(painterResource(R.drawable.ic_cassette), contentDescription = "Show cassette", tint = Tape.Cream)
-                    } else {
-                        Icon(Icons.Rounded.Album, contentDescription = "Show cover", tint = Tape.Cream)
-                    }
-                }
+                Text(
+                    folder,
+                    fontFamily = Marker,
+                    fontSize = 26.sp,
+                    color = Tape.Cream,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .weight(1f)
+                        .semantics { contentDescription = "Playing from $folder" },
+                )
                 IconButton(onClick = { showQueue = true }, enabled = player.hasSong) {
                     Icon(Icons.AutoMirrored.Rounded.QueueMusic, contentDescription = "Queue", tint = Tape.Cream)
                 }
@@ -134,48 +132,54 @@ fun NowPlayingScreen(player: PlayerUi, onClose: () -> Unit) {
                 verticalArrangement = Arrangement.SpaceEvenly,
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                // Hero: the tape turning (default) or the cover art; tap to flip.
-                Box(
-                    Modifier
-                        .weight(1f, fill = false)
-                        .aspectRatio(1f)
-                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
-                            showCover = !showCover
-                        },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Crossfade(showCover, animationSpec = tween(350), label = "hero") { cover ->
-                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            if (cover) {
-                                SongArt(uri, Modifier.fillMaxSize(), px = 1024, corner = 14.dp, seed = folder, artworkData = md.artworkData)
-                            } else {
-                                Cassette(
-                                    label = folder.ifEmpty { "Mixtape" },
-                                    labelColor = Tape.labelColor(folder),
-                                    modifier = Modifier.fillMaxWidth(),
-                                    progress = fraction,
-                                    spinning = player.isPlaying,
-                                    art = uri,
-                                    footLeft = "SIDE A",
-                                    footRight = formatDuration(duration),
-                                )
-                            }
-                        }
-                    }
-                }
+                // Hero: the tape in its own shape. Tap to turn it over: Side B is the cover art.
+                FlipTape(
+                    flipped = flipped,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClickLabel = if (flipped) "Show side A" else "Turn the tape over to see the cover",
+                        ) { flipped = !flipped },
+                    front = {
+                        Cassette(
+                            label = folder.ifEmpty { "Mixtape" },
+                            labelColor = Tape.labelColor(folder),
+                            modifier = Modifier.fillMaxWidth(),
+                            progress = fraction,
+                            spinning = player.isPlaying,
+                            art = uri,
+                            footLeft = "SIDE A",
+                            footRight = formatDuration(duration),
+                        )
+                    },
+                    back = {
+                        TapeSideB(
+                            title = md.title?.toString().orEmpty(),
+                            artist = md.artist?.toString().orEmpty(),
+                            art = uri,
+                            labelColor = Tape.labelColor(folder),
+                            modifier = Modifier.fillMaxWidth(),
+                            artworkData = md.artworkData,
+                        )
+                    },
+                )
 
                 Column(Modifier.fillMaxWidth()) {
+                    val still = rememberReduceMotion()
                     Text(
                         md.title?.toString() ?: "Nothing playing",
                         style = MaterialTheme.typography.headlineSmall,
                         color = Tape.Cream,
                         maxLines = 1,
-                        modifier = Modifier.basicMarquee(),
+                        overflow = if (still) TextOverflow.Ellipsis else TextOverflow.Clip,
+                        modifier = if (still) Modifier else Modifier.basicMarquee(),
                     )
                     Text(
                         md.artist?.toString().orEmpty(),
                         style = MaterialTheme.typography.titleMedium,
-                        color = Tape.Orange,
+                        color = Tape.Dust,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -187,64 +191,29 @@ fun NowPlayingScreen(player: PlayerUi, onClose: () -> Unit) {
                         onSeek = { player.seekTo((it * duration).toLong()) },
                     )
                     Row(Modifier.fillMaxWidth()) {
-                        Text(formatDuration(shownPos), fontFamily = Mono, fontSize = 13.sp, color = Tape.Orange)
+                        Text(formatDuration(shownPos), fontFamily = Mono, fontSize = 13.sp, color = Tape.Cream)
                         Spacer(Modifier.weight(1f))
                         Text("-" + formatDuration(duration - shownPos), fontFamily = Mono, fontSize = 13.sp, color = Tape.Dust)
                     }
                 }
 
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    ModeButton(Icons.Rounded.Shuffle, "Shuffle", on = player.shuffle, onClick = player::toggleShuffle)
-                    IconButton(onClick = { player.previous() }, modifier = Modifier.size(56.dp)) {
-                        Icon(Icons.Rounded.SkipPrevious, contentDescription = "Previous", tint = Tape.Cream, modifier = Modifier.size(38.dp))
-                    }
-                    FilledIconButton(
-                        onClick = player::playPause,
-                        colors = IconButtonDefaults.filledIconButtonColors(containerColor = Tape.Orange, contentColor = Tape.Ink),
-                        modifier = Modifier.size(78.dp),
-                    ) {
-                        Icon(
-                            if (player.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                            contentDescription = if (player.isPlaying) "Pause" else "Play",
-                            modifier = Modifier.size(42.dp),
-                        )
-                    }
-                    IconButton(onClick = { player.next() }, modifier = Modifier.size(56.dp)) {
-                        Icon(Icons.Rounded.SkipNext, contentDescription = "Next", tint = Tape.Cream, modifier = Modifier.size(38.dp))
-                    }
-                    ModeButton(
-                        if (player.repeatMode == Player.REPEAT_MODE_ONE) Icons.Rounded.RepeatOne else Icons.Rounded.Repeat,
-                        "Repeat",
-                        on = player.repeatMode != Player.REPEAT_MODE_OFF,
-                        onClick = player::cycleRepeat,
-                    )
-                }
+                DeckKeys(
+                    playing = player.isPlaying,
+                    shuffle = player.shuffle,
+                    repeatMode = player.repeatMode,
+                    onPlayPause = player::playPause,
+                    onPrevious = { player.previous() },
+                    onNext = { player.next() },
+                    onScrub = { forward -> player.scrub(forward) },
+                    onShuffle = player::toggleShuffle,
+                    onRepeat = player::cycleRepeat,
+                )
             }
             Spacer(Modifier.height(20.dp))
         }
     }
 
     if (showQueue) QueueSheet(player, onDismiss = { showQueue = false })
-}
-
-/** Shuffle / repeat toggle: orange with a dot underneath when on, like a lit deck button. */
-@Composable
-private fun ModeButton(icon: ImageVector, label: String, on: Boolean, onClick: () -> Unit) {
-    IconButton(onClick = onClick) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(icon, contentDescription = label, tint = if (on) Tape.Orange else Tape.Dust)
-            Box(
-                Modifier
-                    .padding(top = 3.dp)
-                    .size(4.dp)
-                    .background(if (on) Tape.Orange else Color.Transparent, CircleShape)
-            )
-        }
-    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -255,9 +224,9 @@ private fun QueueSheet(player: PlayerUi, onDismiss: () -> Unit) {
     val currentRow = queue.indexOfFirst { it.first == currentIndex }.coerceAtLeast(0)
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Tape.Deck) {
         Text(
-            "QUEUE · ${songCount(queue.size).uppercase()}",
-            style = MaterialTheme.typography.labelLarge,
-            color = Tape.Dust,
+            "Up next",
+            style = MaterialTheme.typography.titleLarge,
+            color = Tape.Cream,
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
         )
         LazyColumn(state = rememberLazyListState(initialFirstVisibleItemIndex = (currentRow - 2).coerceAtLeast(0))) {

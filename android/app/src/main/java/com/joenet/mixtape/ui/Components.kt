@@ -7,6 +7,7 @@ import android.net.Uri
 import android.util.LruCache
 import android.util.Size
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -61,7 +62,10 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.ImageShader
+import androidx.compose.ui.graphics.ShaderBrush
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
@@ -104,14 +108,17 @@ object ArtCache {
     }
 }
 
-/** A color pulled from the cover (for the now-playing backdrop); falls back to tape orange. */
+/**
+ * The cover's muted color, used faintly behind Now Playing like light falling on the deck.
+ * (Muted, not vibrant: a vibrant wash is the stock streaming look and fights the tape orange.)
+ */
 @Composable
 fun rememberArtTint(uri: Uri?): Color {
     val context = LocalContext.current
-    val tint by produceState(Tape.Orange, uri) {
+    val tint by produceState(Tape.DeckHigh, uri) {
         val img = uri?.let { ArtCache.load(context, it, 144) }
         if (img == null) {
-            value = Tape.Orange
+            value = Tape.DeckHigh
             return@produceState
         }
         value = withContext(Dispatchers.Default) {
@@ -119,9 +126,9 @@ fun rememberArtTint(uri: Uri?): Color {
                 var bmp = img.asAndroidBitmap()
                 if (bmp.config == Bitmap.Config.HARDWARE) bmp = bmp.copy(Bitmap.Config.ARGB_8888, false)
                 val palette = Palette.from(bmp).generate()
-                val swatch = palette.vibrantSwatch ?: palette.dominantSwatch
+                val swatch = palette.mutedSwatch ?: palette.darkMutedSwatch ?: palette.dominantSwatch
                 swatch?.let { Color(it.rgb) }
-            }.getOrNull() ?: Tape.Orange
+            }.getOrNull() ?: Tape.DeckHigh
         }
     }
     return tint
@@ -181,10 +188,11 @@ fun EqualizerBars(animating: Boolean, modifier: Modifier = Modifier, color: Colo
         t.animateFloat(0.2f, 1f, infiniteRepeatable(tween(ms, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "bar")
     }
     val rest = floatArrayOf(0.45f, 0.8f, 0.3f)
+    val live = animating && !rememberReduceMotion()
     Canvas(modifier.size(18.dp, 16.dp)) {
         val bw = size.width / 5f
         bars.forEachIndexed { i, anim ->
-            val hf = if (animating) anim.value else rest[i]
+            val hf = if (live) anim.value else rest[i]
             val bh = size.height * hf
             drawRoundRect(color, topLeft = Offset(i * 2 * bw, size.height - bh), size = androidx.compose.ui.geometry.Size(bw, bh), cornerRadius = CornerRadius(bw / 2))
         }
@@ -260,19 +268,7 @@ fun MiniPlayer(player: PlayerUi, onOpen: () -> Unit) {
     val fraction = if (player.durationMs > 0) (pos.toFloat() / player.durationMs).coerceIn(0f, 1f) else 0f
     Surface(color = Tape.Deck, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.navigationBarsPadding()) {
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .height(2.dp)
-                    .background(Tape.Line)
-            ) {
-                Box(
-                    Modifier
-                        .fillMaxWidth(fraction)
-                        .fillMaxHeight()
-                        .background(Tape.Orange)
-                )
-            }
+            TapeStrip(fraction, moving = player.isPlaying)
             Row(
                 Modifier
                     .fillMaxWidth()
@@ -303,14 +299,12 @@ fun MiniPlayer(player: PlayerUi, onOpen: () -> Unit) {
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                FilledIconButton(
-                    onClick = player::playPause,
-                    colors = IconButtonDefaults.filledIconButtonColors(containerColor = Tape.Orange, contentColor = Tape.Ink),
-                    modifier = Modifier.size(42.dp),
-                ) {
+                IconButton(onClick = player::playPause) {
                     Icon(
                         if (player.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
                         contentDescription = if (player.isPlaying) "Pause" else "Play",
+                        tint = Tape.Cream,
+                        modifier = Modifier.size(30.dp),
                     )
                 }
                 IconButton(onClick = { player.next() }) {
@@ -318,6 +312,56 @@ fun MiniPlayer(player: PlayerUi, onOpen: () -> Unit) {
                 }
             }
         }
+    }
+}
+
+/**
+ * A barely-there brushed-plastic texture for the deck's background: horizontal streaks of noise,
+ * generated once and tiled.
+ */
+@Composable
+fun rememberBrushedPlastic(): Brush = remember {
+    val w = 256
+    val h = 64
+    val rnd = java.util.Random(7)
+    val px = IntArray(w * h)
+    for (y in 0 until h) {
+        val row = rnd.nextFloat()                   // each row gets its own sheen...
+        for (x in 0 until w) {
+            val v = 0.6f * row + 0.4f * rnd.nextFloat() // ...plus fine grain, so it reads as brushed
+            val a = (v * 14).toInt()                 // alpha 0..14 of 255: almost invisible
+            px[y * w + x] = (a shl 24) or 0xFFFFFF
+        }
+    }
+    val bmp = Bitmap.createBitmap(px, w, h, Bitmap.Config.ARGB_8888).asImageBitmap()
+    ShaderBrush(ImageShader(bmp, TileMode.Repeated, TileMode.Repeated))
+}
+
+/**
+ * The mini player's progress: a thin strip of brown tape. The played part is orange (it's live),
+ * and faint splice marks drift left to right while playing, like tape running between the reels.
+ */
+@Composable
+fun TapeStrip(fraction: Float, moving: Boolean, modifier: Modifier = Modifier) {
+    val animate = moving && !rememberReduceMotion()
+    val phase = if (animate) {
+        val t = rememberInfiniteTransition(label = "tape")
+        t.animateFloat(0f, 1f, infiniteRepeatable(tween(1400, easing = LinearEasing)), label = "phase")
+    } else null
+    Canvas(
+        modifier
+            .fillMaxWidth()
+            .height(3.dp)
+    ) {
+        drawRect(Tape.TapeBrown)
+        val gap = 14.dp.toPx()
+        val shift = (phase?.value ?: 0f) * gap
+        var x = -gap + shift
+        while (x < size.width) {
+            drawRect(Tape.TapeEdge, topLeft = Offset(x, 0f), size = androidx.compose.ui.geometry.Size(2.dp.toPx(), size.height))
+            x += gap
+        }
+        drawRect(Tape.Orange, size = androidx.compose.ui.geometry.Size(size.width * fraction.coerceIn(0f, 1f), size.height))
     }
 }
 
@@ -385,7 +429,7 @@ fun Pill(text: String, selected: Boolean, onClick: () -> Unit) {
         border = if (selected) null else BorderStroke(1.dp, Tape.Line),
     ) {
         Text(
-            text.uppercase(),
+            text,
             style = MaterialTheme.typography.labelLarge,
             color = if (selected) Tape.Ink else Tape.Dust,
             modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp),

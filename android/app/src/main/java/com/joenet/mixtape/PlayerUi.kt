@@ -109,6 +109,13 @@ class PlayerUi {
     fun seekTo(ms: Long) = controller?.seekTo(ms)
     fun jumpTo(index: Int) = controller?.run { seekToDefaultPosition(index); play() }
 
+    /** Cue / review: nudge the position while ◀◀ or ▶▶ is held down. */
+    fun scrub(forward: Boolean, stepMs: Long = 2_000) {
+        val c = controller ?: return
+        val dur = c.duration.takeIf { it != C.TIME_UNSET } ?: return
+        c.seekTo((c.currentPosition + if (forward) stepMs else -stepMs).coerceIn(0, (dur - 500).coerceAtLeast(0)))
+    }
+
     fun toggleShuffle() {
         controller?.let { it.shuffleModeEnabled = !it.shuffleModeEnabled }
     }

@@ -94,6 +94,7 @@ Stack: Kotlin 2.1, Jetpack Compose (Material 3 with a custom palette, system con
 | `ui/Theme.kt` | Palette, fonts, shapes |
 | `ui/*Screen*.kt`, `ui/Components.kt` | Library, playlist, now-playing, sync screens and shared pieces |
 
+This project is vibe-coded**
 ## A note on YouTube's terms
 
 Downloading from YouTube is against YouTube's Terms of Service except where YouTube offers a download option, and the music itself is usually copyrighted. Use this for content you have the right to keep offline (your own uploads, Creative Commons or public-domain music, and so on), for personal listening only.

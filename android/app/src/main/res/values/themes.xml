@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The app is always dark (cassette-deck palette in ui/Theme.kt); this only covers the window before Compose draws -->
+    <style name="Theme.Mixtape" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/window_bg</item>
+        <item name="android:colorAccent">@color/icon_fg</item>
+    </style>
+    <color name="window_bg">#FF14110E</color>
+    <color name="icon_bg">#FF14110E</color>
+    <color name="icon_fg">#FFFF6B35</color>
+    <color name="icon_stripe">#FFF4B942</color>
+    <color name="icon_reel">#FFF3E9DC</color>
+</resources>

@@ -1,0 +1,5 @@
+# Windows scripts need CRLF (cmd mis-parses labels in LF-only .bat files); the Unix wrapper needs LF.
+*.bat   text eol=crlf
+*.ps1   text eol=crlf
+gradlew text eol=lf
+*.jar   binary

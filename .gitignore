@@ -1,0 +1,14 @@
+# Downloaded music and the built APK
+library/
+*.apk
+
+# Importer venv + ffmpeg binaries (setup.ps1 recreates them)
+importer/.venv/
+importer/tools/
+
+# Android build output / machine-specific paths
+android/.gradle/
+android/.kotlin/
+android/build/
+android/app/build/
+android/local.properties

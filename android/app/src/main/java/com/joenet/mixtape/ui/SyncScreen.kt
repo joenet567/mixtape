@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
@@ -70,7 +71,8 @@ fun SyncScreen(vm: MainViewModel) {
         else -> 0f
     }
 
-    Scaffold(containerColor = Tape.Ink) { pad ->
+    // The app shell already handles the status and navigation bars.
+    Scaffold(containerColor = Tape.Ink, contentWindowInsets = WindowInsets(0, 0, 0, 0)) { pad ->
         Column(
             Modifier
                 .padding(pad)

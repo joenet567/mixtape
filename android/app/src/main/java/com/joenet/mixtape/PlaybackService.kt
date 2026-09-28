@@ -23,10 +23,12 @@ import com.google.common.util.concurrent.ListenableFuture
 class PlaybackService : MediaSessionService() {
 
     private var session: MediaSession? = null
+    private lateinit var exo: ExoPlayer
+    private lateinit var player: MixPlayer
 
     override fun onCreate() {
         super.onCreate()
-        val player = ExoPlayer.Builder(this)
+        exo = ExoPlayer.Builder(this)
             .setAudioAttributes(
                 AudioAttributes.Builder()
                     .setUsage(C.USAGE_MEDIA)
@@ -37,7 +39,15 @@ class PlaybackService : MediaSessionService() {
             .setHandleAudioBecomingNoisy(true) // pause when headphones are unplugged
             .setWakeMode(C.WAKE_MODE_LOCAL)    // keep the CPU awake while playing with the screen off
             .build()
-        player.addListener(Watcher(player))
+        player = MixPlayer(exo)
+
+        // Reopen where we left off: the queue is back (paused) before any screen asks for it.
+        QueueStore.load(this)?.let { saved ->
+            player.restore(saved.items, saved.index, saved.positionMs, saved.shuffle, saved.original)
+            player.repeatMode = saved.repeatMode
+            player.prepare()
+        }
+        player.addListener(Watcher())
 
         val openApp = PendingIntent.getActivity(
             this, 0,
@@ -56,17 +66,15 @@ class PlaybackService : MediaSessionService() {
 
     /** App swiped away from recents: keep going if music is playing, otherwise shut down. */
     override fun onTaskRemoved(rootIntent: Intent?) {
-        val player = session?.player
-        if (player == null || !player.playWhenReady || player.mediaItemCount == 0 ||
-            player.playbackState == Player.STATE_ENDED
-        ) {
+        val p = session?.player
+        if (p == null || !p.playWhenReady || p.mediaItemCount == 0 || p.playbackState == Player.STATE_ENDED) {
             stopSelf()
         }
     }
 
     override fun onDestroy() {
         session?.run {
-            if (player.mediaItemCount > 0) QueueStore.savePosition(this@PlaybackService, player)
+            if (player.mediaItemCount > 0) QueueStore.savePosition(this@PlaybackService, this@PlaybackService.player)
             player.release()
             release()
         }
@@ -91,7 +99,6 @@ class PlaybackService : MediaSessionService() {
         ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
             val saved = QueueStore.load(this@PlaybackService)
                 ?: return Futures.immediateFailedFuture(IllegalStateException("nothing to resume"))
-            mediaSession.player.shuffleModeEnabled = saved.shuffle
             mediaSession.player.repeatMode = saved.repeatMode
             return Futures.immediateFuture(
                 MediaSession.MediaItemsWithStartPosition(saved.items, saved.index, saved.positionMs)
@@ -99,7 +106,7 @@ class PlaybackService : MediaSessionService() {
         }
     }
 
-    private inner class Watcher(private val player: ExoPlayer) : Player.Listener {
+    private inner class Watcher : Player.Listener {
         private var errorsInARow = 0
 
         override fun onTimelineChanged(timeline: Timeline, reason: Int) {
@@ -116,7 +123,7 @@ class PlaybackService : MediaSessionService() {
                     Player.EVENT_REPEAT_MODE_CHANGED,
                 )
             ) {
-                QueueStore.savePosition(this@PlaybackService, p)
+                QueueStore.savePosition(this@PlaybackService, player)
             }
             if (p.isPlaying) errorsInARow = 0
         }

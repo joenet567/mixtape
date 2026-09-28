@@ -50,7 +50,7 @@ class MainActivity : ComponentActivity() {
 
     /** Tapping the media notification opens straight to the player screen. */
     private fun handleIntent(intent: Intent?) {
-        if (intent?.getBooleanExtra(EXTRA_OPEN_PLAYER, false) == true) vm.open(Screen.NowPlaying)
+        if (intent?.getBooleanExtra(EXTRA_OPEN_PLAYER, false) == true) vm.playerExpanded = true
     }
 
     private fun requestAudioPermission() = permissionLauncher.launch(MainViewModel.audioPermission)
@@ -62,7 +62,7 @@ class MainActivity : ComponentActivity() {
         controllerFuture = future
         future.addListener({
             if (controllerFuture === future && !future.isCancelled) {
-                runCatching { future.get() }.getOrNull()?.let { vm.player.attach(it, this) }
+                runCatching { future.get() }.getOrNull()?.let { vm.player.attach(it) }
             }
         }, ContextCompat.getMainExecutor(this))
     }

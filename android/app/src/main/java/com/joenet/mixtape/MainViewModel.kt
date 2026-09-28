@@ -108,6 +108,40 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 refreshHome()
             }
         }
+        AutoSync.schedule(app)
+    }
+
+    // ---- settings ----
+
+    var evenLoudness by mutableStateOf(AppSettings.evenLoudness(app))
+        private set
+    var autoSync by mutableStateOf(AppSettings.autoSync(app))
+        private set
+    /** Now Playing shows the lyrics under a smaller cassette (remembered between sessions). */
+    var showLyrics by mutableStateOf(AppSettings.showLyrics(app))
+        private set
+
+    fun updateEvenLoudness(on: Boolean) {
+        evenLoudness = on
+        AppSettings.set(getApplication(), AppSettings.EVEN_LOUDNESS, on)
+    }
+
+    fun updateAutoSync(on: Boolean) {
+        autoSync = on
+        AppSettings.set(getApplication(), AppSettings.AUTO_SYNC, on)
+        AutoSync.schedule(getApplication())
+    }
+
+    fun updateShowLyrics(on: Boolean) {
+        showLyrics = on
+        AppSettings.set(getApplication(), AppSettings.SHOW_LYRICS, on)
+    }
+
+    /** Lyrics the PC sent for this song, if any. */
+    suspend fun lyricsFor(songKey: String?): Lyrics? = withContext(Dispatchers.IO) {
+        val id = Sidecar.videoIdOf(songKey) ?: return@withContext null
+        val file = Sidecar.lyricsFile(getApplication(), id)
+        if (file.isFile) runCatching { Lyrics.parse(file.readText()) }.getOrNull() else null
     }
 
     // ---- navigation: three tabs, each with its own back stack ----

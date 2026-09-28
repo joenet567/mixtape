@@ -2,6 +2,8 @@ package com.joenet.mixtape
 
 import android.app.PendingIntent
 import android.content.Intent
+import android.content.SharedPreferences
+import android.media.audiofx.AudioEffect
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
@@ -12,7 +14,9 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.Timeline
+import androidx.media3.common.Tracks
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.extractor.metadata.id3.TextInformationFrame
 import androidx.media3.session.CommandButton
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
@@ -29,6 +33,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlin.math.min
+import kotlin.math.pow
 
 /**
  * Owns the player. Media3 turns this into a foreground service with a media notification
@@ -36,7 +42,8 @@ import kotlinx.coroutines.launch
  * which is what keeps the music going after the app is backgrounded or swiped away.
  *
  * It also keeps the listening history (a play counts at 30 s or half the song, whichever comes
- * first), the resume point of each tape, and a Like button in the notification.
+ * first), the resume point of each tape, a Like button in the notification, the ReplayGain
+ * volume ("Even out loudness") and the sleep timer.
  */
 class PlaybackService : MediaSessionService() {
 
@@ -48,6 +55,10 @@ class PlaybackService : MediaSessionService() {
     private val handler = Handler(Looper.getMainLooper())
 
     @Volatile private var liked: Set<String> = emptySet()
+
+    private val settingsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == AppSettings.EVEN_LOUDNESS) updateTrackVolume()
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -83,6 +94,7 @@ class PlaybackService : MediaSessionService() {
             .setCallback(Callback())
             .setSessionActivity(openApp)
             .build()
+        publishExtras()
 
         scope.launch {
             db.likes().all().collect { list ->
@@ -90,6 +102,25 @@ class PlaybackService : MediaSessionService() {
                 refreshLikeButton()
             }
         }
+        AppSettings.prefs(this).registerOnSharedPreferenceChangeListener(settingsListener)
+        // Lets the phone's own equaliser (Samsung, Pixel, Xiaomi...) attach to our audio.
+        sendBroadcast(audioEffectIntent(AudioEffect.ACTION_OPEN_AUDIO_EFFECT_CONTROL_SESSION))
+    }
+
+    private fun audioEffectIntent(action: String) = Intent(action)
+        .putExtra(AudioEffect.EXTRA_AUDIO_SESSION, exo.audioSessionId)
+        .putExtra(AudioEffect.EXTRA_PACKAGE_NAME, packageName)
+        .putExtra(AudioEffect.EXTRA_CONTENT_TYPE, AudioEffect.CONTENT_TYPE_MUSIC)
+
+    /** What the app's screens read from the session: the sleep timer and the audio session (for the equaliser). */
+    private fun publishExtras() {
+        session?.setSessionExtras(
+            Bundle().apply {
+                putLong(EXTRA_SLEEP_AT, sleepAt)
+                putBoolean(EXTRA_SLEEP_END_OF_SONG, sleepEndOfSong)
+                putInt(EXTRA_AUDIO_SESSION, exo.audioSessionId)
+            }
+        )
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = session
@@ -104,6 +135,8 @@ class PlaybackService : MediaSessionService() {
 
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
+        AppSettings.prefs(this).unregisterOnSharedPreferenceChangeListener(settingsListener)
+        sendBroadcast(audioEffectIntent(AudioEffect.ACTION_CLOSE_AUDIO_EFFECT_CONTROL_SESSION))
         session?.run {
             if (player.mediaItemCount > 0) {
                 QueueStore.savePosition(this@PlaybackService, this@PlaybackService.player)
@@ -142,6 +175,92 @@ class PlaybackService : MediaSessionService() {
                 db.likes().like(Like(key, md.title?.toString().orEmpty(), md.artist?.toString().orEmpty(), System.currentTimeMillis()))
             }
         }
+    }
+
+    // ---- volume: ReplayGain per song x the sleep timer's fade ----
+
+    private var trackVolume = 1f
+    private var fade = 1f
+
+    private fun applyVolume() {
+        exo.volume = trackVolume * fade
+    }
+
+    /**
+     * Turns loud songs down so everything plays at about Spotify's -14 LUFS. Only ever down:
+     * boosting quiet songs would clip. The gain comes from the file's ReplayGain tag, or from
+     * what the PC sent at sync time for songs synced before the importer tagged them.
+     */
+    private fun updateTrackVolume() {
+        val gain = if (AppSettings.evenLoudness(this)) replayGainDb() else null
+        trackVolume = gain?.let { min(1f, 10f.pow((it + REPLAYGAIN_PREAMP_DB) / 20f)) } ?: 1f
+        applyVolume()
+    }
+
+    private fun replayGainDb(): Float? {
+        for (group in exo.currentTracks.groups) {
+            if (group.type != C.TRACK_TYPE_AUDIO) continue
+            for (i in 0 until group.length) {
+                val md = group.getTrackFormat(i).metadata ?: continue
+                for (j in 0 until md.length()) {
+                    val e = md.get(j)
+                    if (e is TextInformationFrame && e.id == "TXXX" && e.description.equals("REPLAYGAIN_TRACK_GAIN", ignoreCase = true)) {
+                        e.values.firstOrNull()?.let(::parseDb)?.let { return it }
+                    }
+                }
+            }
+        }
+        return Sidecar.videoIdOf(player.currentMediaItem?.songKey)?.let { Sidecar.gain(this, it) }
+    }
+
+    private fun parseDb(s: String): Float? = Regex("""[-+]?\d+(?:\.\d+)?""").find(s)?.value?.toFloatOrNull()
+
+    // ---- sleep timer: fades out over the last 10 s, then pauses ----
+
+    private var sleepAt = 0L // wall clock, 0 = off
+    private var sleepEndOfSong = false
+
+    private fun setSleepTimer(minutes: Int) {
+        handler.removeCallbacks(sleepTick)
+        sleepEndOfSong = minutes == SLEEP_END_OF_SONG
+        sleepAt = if (minutes > 0) System.currentTimeMillis() + minutes * 60_000L else 0L
+        exo.pauseAtEndOfMediaItems = sleepEndOfSong
+        fade = 1f
+        applyVolume()
+        if (sleepAt > 0 || sleepEndOfSong) handler.post(sleepTick)
+        publishExtras()
+    }
+
+    private val sleepTick = object : Runnable {
+        override fun run() {
+            val left = when {
+                sleepAt > 0 -> sleepAt - System.currentTimeMillis()
+                sleepEndOfSong && player.duration != C.TIME_UNSET -> player.duration - player.currentPosition
+                sleepEndOfSong -> Long.MAX_VALUE
+                else -> return
+            }
+            if (sleepAt > 0 && left <= 0) {
+                fallAsleep()
+                return
+            }
+            fade = if (player.isPlaying) (left / SLEEP_FADE_MS.toFloat()).coerceIn(0f, 1f) else 1f
+            applyVolume()
+            handler.postDelayed(this, if (left < SLEEP_FADE_MS + 1_500) 100 else 1_000)
+        }
+    }
+
+    /** Timer's up (or the song ended): stop, and be back at normal volume for the next play. */
+    private fun fallAsleep() {
+        player.pause()
+        handler.removeCallbacks(sleepTick)
+        sleepAt = 0L
+        sleepEndOfSong = false
+        exo.pauseAtEndOfMediaItems = false
+        publishExtras()
+        handler.postDelayed({
+            fade = 1f
+            applyVolume()
+        }, 600)
     }
 
     // ---- history ----
@@ -201,7 +320,10 @@ class PlaybackService : MediaSessionService() {
         override fun onConnect(session: MediaSession, controller: MediaSession.ControllerInfo): MediaSession.ConnectionResult =
             MediaSession.ConnectionResult.AcceptedResultBuilder(session)
                 .setAvailableSessionCommands(
-                    MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS.buildUpon().add(likeCommand).build()
+                    MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS.buildUpon()
+                        .add(likeCommand)
+                        .add(SessionCommand(ACTION_SLEEP, Bundle.EMPTY))
+                        .build()
                 )
                 .build()
 
@@ -211,7 +333,10 @@ class PlaybackService : MediaSessionService() {
             customCommand: SessionCommand,
             args: Bundle,
         ): ListenableFuture<SessionResult> {
-            if (customCommand.customAction == ACTION_LIKE) toggleLike()
+            when (customCommand.customAction) {
+                ACTION_LIKE -> toggleLike()
+                ACTION_SLEEP -> setSleepTimer(args.getInt(ARG_MINUTES))
+            }
             return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
         }
 
@@ -258,6 +383,17 @@ class PlaybackService : MediaSessionService() {
             if (isPlaying) handler.postDelayed(listenCheck, 1000) else saveResume()
         }
 
+        override fun onTracksChanged(tracks: Tracks) = updateTrackVolume()
+
+        /** "End of this song" on the sleep timer: the player paused itself at the end of the song. */
+        override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+            if (!playWhenReady && sleepEndOfSong && reason == Player.PLAY_WHEN_READY_CHANGE_REASON_END_OF_MEDIA_ITEM) fallAsleep()
+        }
+
+        override fun onPlaybackStateChanged(state: Int) {
+            if (state == Player.STATE_ENDED && (sleepEndOfSong || sleepAt > 0)) fallAsleep()
+        }
+
         override fun onEvents(p: Player, events: Player.Events) {
             if (events.containsAny(
                     Player.EVENT_MEDIA_ITEM_TRANSITION,
@@ -282,5 +418,19 @@ class PlaybackService : MediaSessionService() {
 
     companion object {
         const val ACTION_LIKE = "com.joenet.mixtape.LIKE"
+
+        /** Sleep timer: [ARG_MINUTES] > 0 sets it, 0 turns it off, [SLEEP_END_OF_SONG] stops after this song. */
+        const val ACTION_SLEEP = "com.joenet.mixtape.SLEEP"
+        const val ARG_MINUTES = "minutes"
+        const val SLEEP_END_OF_SONG = -1
+
+        const val EXTRA_SLEEP_AT = "sleepAt"
+        const val EXTRA_SLEEP_END_OF_SONG = "sleepEndOfSong"
+        const val EXTRA_AUDIO_SESSION = "audioSession"
+
+        private const val SLEEP_FADE_MS = 10_000L
+
+        /** ReplayGain 2.0 aims at -18 LUFS; +4 dB lands on the -14 LUFS streaming apps use. */
+        private const val REPLAYGAIN_PREAMP_DB = 4f
     }
 }

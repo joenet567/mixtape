@@ -106,7 +106,7 @@ fun SyncScreen(vm: MainViewModel) {
                     .padding(top = 8.dp),
             )
             Spacer(Modifier.height(16.dp))
-            Step("1", "Run sync.bat on your PC (mixtape\\importer).")
+            Step("1", "Run sync.bat on your PC (mixtape\\importer), or install-autosync.ps1 once to keep it in the tray.")
             Step("2", "Keep this phone on the same Wi-Fi as the PC.")
             Step("3", "Tap Find PC (or type the address sync.bat shows), then Sync now.")
             Spacer(Modifier.height(16.dp))
@@ -141,7 +141,8 @@ fun SyncScreen(vm: MainViewModel) {
             Spacer(Modifier.height(12.dp))
             Text(
                 "New songs go to Music/<playlist name>/. Songs you already have are skipped, " +
-                    "and nothing on the phone is ever deleted.",
+                    "and nothing on the phone is ever deleted. After the first sync, new songs also " +
+                    "arrive by themselves while the phone charges on Wi-Fi (Settings > Sync automatically).",
                 style = MaterialTheme.typography.bodySmall,
                 color = Tape.Dust,
             )
@@ -209,6 +210,9 @@ private fun StatusCard(state: State) {
                             "${songCount(state.alreadyHad)} ${if (state.alreadyHad == 1) "was" else "were"} already on the phone.",
                             color = Tape.Cream,
                         )
+                    }
+                    if (state.lyrics > 0) {
+                        Text("Got lyrics for ${songCount(state.lyrics)}.", color = Tape.Cream)
                     }
                     if (state.failed.isNotEmpty()) {
                         Text("${state.failed.size} failed:", color = MaterialTheme.colorScheme.error)

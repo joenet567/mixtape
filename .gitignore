@@ -5,6 +5,7 @@ library/
 # Importer venv + ffmpeg binaries (setup.ps1 recreates them)
 importer/.venv/
 importer/tools/
+importer/logs/
 
 # Android build output / machine-specific paths
 android/.gradle/

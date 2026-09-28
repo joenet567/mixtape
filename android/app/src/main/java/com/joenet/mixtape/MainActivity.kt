@@ -58,7 +58,11 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         val token = SessionToken(this, ComponentName(this, PlaybackService::class.java))
-        val future = MediaController.Builder(this, token).buildAsync()
+        val future = MediaController.Builder(this, token)
+            .setListener(object : MediaController.Listener {
+                override fun onExtrasChanged(controller: MediaController, extras: Bundle) = vm.player.onExtras(extras)
+            })
+            .buildAsync()
         controllerFuture = future
         future.addListener({
             if (controllerFuture === future && !future.isCancelled) {

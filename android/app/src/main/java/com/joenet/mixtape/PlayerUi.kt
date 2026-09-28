@@ -1,5 +1,6 @@
 package com.joenet.mixtape
 
+import android.os.Bundle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -10,6 +11,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
+import androidx.media3.session.SessionCommand
 
 data class QueueEntry(val index: Int, val item: MediaItem)
 
@@ -49,6 +51,17 @@ class PlayerUi {
     var tick by mutableIntStateOf(0)
         private set
 
+    /** Sleep timer: when it stops the music (wall clock, 0 = off), or at the end of this song. */
+    var sleepAt by mutableLongStateOf(0L)
+        private set
+    var sleepEndOfSong by mutableStateOf(false)
+        private set
+    val sleepOn: Boolean get() = sleepAt > 0 || sleepEndOfSong
+
+    /** The player's audio session, for opening the phone's equaliser on it. */
+    var audioSessionId = 0
+        private set
+
     val hasSong: Boolean get() = mediaId != null
     val currentKey: String? get() = currentItem?.songKey
     val currentFolder: String get() = currentItem?.folder.orEmpty()
@@ -61,6 +74,22 @@ class PlayerUi {
         controller = c
         c.addListener(listener)
         refresh(c)
+        onExtras(c.sessionExtras)
+    }
+
+    /** The service publishes the sleep timer and audio session as session extras. */
+    fun onExtras(extras: Bundle) {
+        sleepAt = extras.getLong(PlaybackService.EXTRA_SLEEP_AT)
+        sleepEndOfSong = extras.getBoolean(PlaybackService.EXTRA_SLEEP_END_OF_SONG)
+        audioSessionId = extras.getInt(PlaybackService.EXTRA_AUDIO_SESSION)
+    }
+
+    /** Minutes until the music stops; 0 turns the timer off, [PlaybackService.SLEEP_END_OF_SONG] waits for this song. */
+    fun setSleepTimer(minutes: Int) {
+        controller?.sendCustomCommand(
+            SessionCommand(PlaybackService.ACTION_SLEEP, Bundle.EMPTY),
+            Bundle().apply { putInt(PlaybackService.ARG_MINUTES, minutes) },
+        )
     }
 
     fun detach() {

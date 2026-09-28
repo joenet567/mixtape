@@ -87,20 +87,20 @@ class PlayerUi {
      * Play [songs] from [startIndex]. [ctx] names the source for "Next from: …". With shuffle on,
      * the tapped song plays first and the rest is dealt shuffled (MixPlayer does that).
      */
-    fun play(songs: List<Song>, startIndex: Int, ctx: String) {
+    fun play(songs: List<Song>, startIndex: Int, ctx: PlayCtx, startPositionMs: Long = 0L) {
         val c = controller ?: return
         if (songs.isEmpty()) return
-        c.setMediaItems(songs.map { it.toMediaItem(ctx) }, startIndex.coerceIn(0, songs.lastIndex), 0L)
+        c.setMediaItems(songs.map { it.toMediaItem(ctx) }, startIndex.coerceIn(0, songs.lastIndex), startPositionMs)
         c.prepare()
         c.play()
     }
 
-    fun playInOrder(songs: List<Song>, ctx: String) {
+    fun playInOrder(songs: List<Song>, ctx: PlayCtx) {
         controller?.shuffleModeEnabled = false
         play(songs, 0, ctx)
     }
 
-    fun shuffleAll(songs: List<Song>, ctx: String) {
+    fun shuffleAll(songs: List<Song>, ctx: PlayCtx) {
         val c = controller ?: return
         if (songs.isEmpty()) return
         play(songs, songs.indices.random(), ctx)
@@ -123,7 +123,7 @@ class PlayerUi {
     private fun insert(songs: List<Song>, at: Int) {
         val c = controller ?: return
         if (c.mediaItemCount == 0) {
-            play(songs, 0, "Your queue")
+            play(songs, 0, PlayCtx.oneOff("Your queue"))
             return
         }
         c.addMediaItems(at.coerceIn(0, c.mediaItemCount), songs.map { it.toMediaItem(ctx = null, queued = true) })

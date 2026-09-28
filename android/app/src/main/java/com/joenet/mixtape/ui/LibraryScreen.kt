@@ -21,9 +21,11 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material.icons.rounded.Wifi
@@ -36,6 +38,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -48,6 +52,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.joenet.mixtape.MainViewModel
+import com.joenet.mixtape.PlayCtx
 import com.joenet.mixtape.Route
 import com.joenet.mixtape.TapeHit
 import com.joenet.mixtape.TapeRef
@@ -105,9 +110,48 @@ private fun TapesGrid(vm: MainViewModel) {
         item(span = { GridItemSpan(maxLineSpan) }, key = "get") {
             GetNewSongsRow { vm.open(Route.Sync) }
         }
+        item(key = "record") { RecordTapeTile(vm) }
         items(tapes, key = { it.ref.toString() }) { hit ->
             TapeCard(vm, hit, Modifier.fillMaxWidth())
         }
+    }
+}
+
+/** A blank tape: record your own mixtape. */
+@Composable
+private fun RecordTapeTile(vm: MainViewModel) {
+    var naming by remember { mutableStateOf(false) }
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.medium)
+            .clickable(onClickLabel = "Record a new tape") { naming = true }
+            .padding(4.dp)
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Cassette("", Tape.DeckHigh, Modifier.fillMaxWidth())
+            Box(
+                Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(Tape.Cream),
+                contentAlignment = Alignment.Center,
+            ) { Icon(Icons.Rounded.Add, contentDescription = null, tint = Tape.Ink) }
+        }
+        Spacer(Modifier.height(6.dp))
+        Text("Record a tape", style = MaterialTheme.typography.bodySmall, color = Tape.Cream)
+    }
+    if (naming) {
+        TapeEditorDialog(
+            title = "Record a tape",
+            confirm = "Record",
+            initialColor = Tape.labels.indices.random(),
+            onDismiss = { naming = false },
+            onConfirm = { name, color ->
+                naming = false
+                vm.createTape(name, color)
+            },
+        )
     }
 }
 
@@ -224,7 +268,7 @@ private fun AllSongs(vm: MainViewModel) {
                     .padding(start = 16.dp, end = 16.dp, bottom = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Button(onClick = { vm.player.shuffleAll(songs, "All songs") }) {
+                Button(onClick = { vm.player.shuffleAll(songs, PlayCtx.ALL) }) {
                     Icon(Icons.Rounded.Shuffle, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
                     Text("Shuffle all")
@@ -239,7 +283,7 @@ private fun AllSongs(vm: MainViewModel) {
                 current = song.mediaId == vm.player.mediaId,
                 playing = vm.player.isPlaying,
                 onLongClick = { vm.actionsFor = song },
-            ) { vm.player.play(songs, i, "All songs") }
+            ) { vm.player.play(songs, i, PlayCtx.ALL) }
         }
     }
 }

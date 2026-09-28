@@ -50,7 +50,7 @@ data class Song(
      * A queue entry. [ctx] names where it's playing from ("Tape: Chill"); [queued] marks songs
      * added with Play next / Add to queue; every entry gets its own id so duplicates stay distinct.
      */
-    fun toMediaItem(ctx: String? = null, queued: Boolean = false): MediaItem = MediaItem.Builder()
+    fun toMediaItem(ctx: PlayCtx? = null, queued: Boolean = false): MediaItem = MediaItem.Builder()
         .setMediaId(mediaId)
         .setUri(uri)
         .setMediaMetadata(
@@ -64,7 +64,8 @@ data class Song(
                     bundleOf(
                         EXTRA_FOLDER to folder,
                         EXTRA_KEY to key,
-                        EXTRA_CTX to ctx,
+                        EXTRA_CTX to ctx?.name,
+                        EXTRA_CTX_REF to ctx?.ref,
                         EXTRA_QID to UUID.randomUUID().toString(),
                         EXTRA_QUEUED to queued,
                     )
@@ -77,6 +78,7 @@ data class Song(
         const val EXTRA_FOLDER = "folder"
         const val EXTRA_KEY = "key"
         const val EXTRA_CTX = "ctx"
+        const val EXTRA_CTX_REF = "ctxRef"
         const val EXTRA_QID = "qid"
         const val EXTRA_QUEUED = "queued"
         private val VIDEO_ID = Regex("""\[([A-Za-z0-9_-]{11})]\.[A-Za-z0-9]+$""")
@@ -96,6 +98,7 @@ val MediaItem.qid: String get() = mediaMetadata.extras?.getString(Song.EXTRA_QID
 val MediaItem.songKey: String get() = mediaMetadata.extras?.getString(Song.EXTRA_KEY) ?: mediaId
 val MediaItem.isQueued: Boolean get() = mediaMetadata.extras?.getBoolean(Song.EXTRA_QUEUED) == true
 val MediaItem.ctx: String? get() = mediaMetadata.extras?.getString(Song.EXTRA_CTX)
+val MediaItem.ctxRef: String? get() = mediaMetadata.extras?.getString(Song.EXTRA_CTX_REF)
 val MediaItem.folder: String get() = mediaMetadata.extras?.getString(Song.EXTRA_FOLDER).orEmpty()
 
 /** A folder of songs, i.e. one imported YouTube playlist (or any album folder copied to the phone). */

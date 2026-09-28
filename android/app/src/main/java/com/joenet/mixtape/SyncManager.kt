@@ -107,6 +107,7 @@ object SyncManager {
         }
         saveAddress(app, address)
         job = scope.launch {
+            val startedAt = System.currentTimeMillis()
             try {
                 _state.value = State.Working("Asking $address for the song list…")
                 val lib = JSONObject(httpGetText("http://$address/api/library"))
@@ -140,6 +141,10 @@ object SyncManager {
                     } catch (e: Exception) {
                         failed += "$title (${e.message ?: e.javaClass.simpleName})"
                     }
+                }
+                // Home's "New from your PC" shows what the last sync brought in
+                if (added > 0) {
+                    app.getSharedPreferences("sync", Context.MODE_PRIVATE).edit().putLong("lastAddedAt", startedAt).apply()
                 }
                 _state.value = State.Finished(added, alreadyHad, failed)
             } catch (e: CancellationException) {

@@ -33,6 +33,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.DragHandle
+import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -214,24 +216,38 @@ fun NowPlayingScreen(
 
                 Column(Modifier.fillMaxWidth()) {
                     val still = rememberReduceMotion()
-                    Text(
-                        md.title?.toString() ?: "Nothing playing",
-                        style = MaterialTheme.typography.headlineSmall,
-                        color = Tape.Cream,
-                        maxLines = 1,
-                        overflow = if (still) TextOverflow.Ellipsis else TextOverflow.Clip,
-                        modifier = if (still) Modifier else Modifier.basicMarquee(),
-                    )
-                    Text(
-                        md.artist?.toString().orEmpty(),
-                        style = MaterialTheme.typography.titleMedium,
-                        color = Tape.Dust,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.clickable(enabled = song != null, onClickLabel = "Open artist") {
-                            song?.artists?.firstOrNull()?.let { vm.open(Route.Artist(it)) }
-                        },
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                md.title?.toString() ?: "Nothing playing",
+                                style = MaterialTheme.typography.headlineSmall,
+                                color = Tape.Cream,
+                                maxLines = 1,
+                                overflow = if (still) TextOverflow.Ellipsis else TextOverflow.Clip,
+                                modifier = if (still) Modifier else Modifier.basicMarquee(),
+                            )
+                            Text(
+                                md.artist?.toString().orEmpty(),
+                                style = MaterialTheme.typography.titleMedium,
+                                color = Tape.Dust,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.clickable(enabled = song != null, onClickLabel = "Open artist") {
+                                    song?.artists?.firstOrNull()?.let { vm.open(Route.Artist(it)) }
+                                },
+                            )
+                        }
+                        if (song != null) {
+                            val liked = vm.isLiked(song)
+                            IconButton(onClick = { vm.toggleLike(song) }) {
+                                Icon(
+                                    if (liked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+                                    contentDescription = if (liked) "Remove from Liked songs" else "Like",
+                                    tint = if (liked) Tape.Cream else Tape.Dust,
+                                )
+                            }
+                        }
+                    }
                     Spacer(Modifier.height(10.dp))
                     TapeSeekBar(
                         fraction = fraction,
@@ -321,6 +337,7 @@ private fun QueueSheet(vm: MainViewModel, onDismiss: () -> Unit) {
     var upcoming by remember(view) { mutableStateOf(view.queued + view.rest) }
     val queuedCount = upcoming.takeWhile { it.item.isQueued }.size
     var dragFrom by remember { mutableStateOf<Int?>(null) }
+    var savingAsTape by remember { mutableStateOf(false) }
 
     val listState = rememberLazyListState()
     val reorder = rememberReorderableLazyListState(listState) { from, to ->
@@ -343,6 +360,20 @@ private fun QueueSheet(vm: MainViewModel, onDismiss: () -> Unit) {
             if (view.queued.isNotEmpty()) {
                 TextButton(onClick = { player.clearQueued() }) { Text("Clear queue", color = Tape.Dust) }
             }
+            TextButton(onClick = { savingAsTape = true }) { Text("Save as tape", color = Tape.Dust) }
+        }
+        if (savingAsTape) {
+            TapeEditorDialog(
+                title = "Save the queue as a tape",
+                confirm = "Record",
+                initialColor = Tape.labels.indices.random(),
+                onDismiss = { savingAsTape = false },
+                onConfirm = { name, color ->
+                    savingAsTape = false
+                    val songs = player.queueKeys().mapNotNull { vm.songFor(it) }
+                    vm.createTape(name, color, songs, openIt = false)
+                },
+            )
         }
         LazyColumn(state = listState, modifier = Modifier.fillMaxWidth()) {
             view.current?.let { cur ->

@@ -12,8 +12,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
 import androidx.compose.material.icons.automirrored.rounded.PlaylistPlay
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
+import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -58,6 +61,18 @@ fun SongActionsSheet(vm: MainViewModel, song: Song, onDismiss: () -> Unit) {
             ActionRow(rememberVectorPainter(Icons.AutoMirrored.Rounded.QueueMusic), "Add to queue") {
                 vm.player.addToQueue(song)
                 vm.notify("Added to queue")
+                done()
+            }
+            val liked = vm.isLiked(song)
+            ActionRow(
+                rememberVectorPainter(if (liked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder),
+                if (liked) "Remove from Liked songs" else "Like",
+            ) {
+                vm.toggleLike(song)
+                done()
+            }
+            ActionRow(rememberVectorPainter(Icons.AutoMirrored.Rounded.PlaylistAdd), "Add to tape…") {
+                vm.addToTape = listOf(song)
                 done()
             }
             for (artist in song.artists) {

@@ -132,6 +132,7 @@ fun MixtapeApp(vm: MainViewModel, onRequestPermission: () -> Unit) {
         }
 
         vm.actionsFor?.let { SongActionsSheet(vm, it, onDismiss = { vm.actionsFor = null }) }
+        vm.addToTape?.let { AddToTapeSheet(vm, it, onDismiss = { vm.addToTape = null }) }
     }
 }
 

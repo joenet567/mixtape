@@ -49,6 +49,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.joenet.mixtape.MainViewModel
+import com.joenet.mixtape.PlayCtx
 import com.joenet.mixtape.Route
 import com.joenet.mixtape.SearchResults
 import com.joenet.mixtape.Searcher
@@ -145,13 +146,25 @@ private fun SearchStart(vm: MainViewModel, onPick: (String) -> Unit) {
                 }
             }
         }
+        val recent = vm.recentlyPlayed()
+        if (recent.isNotEmpty()) {
+            item(key = "played") { SectionTitle("Recently played") }
+            itemsIndexed(recent, key = { _, s -> "p:${s.id}" }) { i, song ->
+                SongRow(
+                    song,
+                    current = song.mediaId == vm.player.mediaId,
+                    playing = vm.player.isPlaying,
+                    onLongClick = { vm.actionsFor = song },
+                ) { vm.player.play(recent, i, PlayCtx.oneOff("Recently played")) }
+            }
+        }
     }
 }
 
 @Composable
 private fun Results(vm: MainViewModel, r: SearchResults, used: () -> Unit) {
     var allSongs by rememberSaveable(r.query) { mutableStateOf(false) }
-    val ctx = "Search: “${r.query.trim()}”"
+    val ctx = PlayCtx.oneOff("Search: “${r.query.trim()}”")
     val playSong = { index: Int ->
         used()
         vm.player.play(r.songs, index, ctx) // the rest of the matches follow it, like Spotify

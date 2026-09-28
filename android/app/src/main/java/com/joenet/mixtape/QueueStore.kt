@@ -43,6 +43,7 @@ object QueueStore {
                     .put("q", item.qid)
                     .put("u", item.isQueued)
                     .put("c", item.ctx.orEmpty())
+                    .put("r", item.ctxRef.orEmpty())
             )
         }
         prefs(context).edit().putString("items", arr.toString()).apply()
@@ -82,6 +83,7 @@ object QueueStore {
                                 Song.EXTRA_QID to o.optString("q", "$id#$i"),
                                 Song.EXTRA_QUEUED to o.optBoolean("u"),
                                 Song.EXTRA_CTX to o.optString("c").ifEmpty { null },
+                                Song.EXTRA_CTX_REF to o.optString("r").ifEmpty { null },
                             )
                         )
                         .setIsPlayable(true)

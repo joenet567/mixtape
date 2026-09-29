@@ -32,9 +32,10 @@ import com.joenet.mixtape.Lyrics
 import kotlinx.coroutines.delay
 
 /**
- * Lyrics scrolling under the cassette: the line being sung in cream, the rest in dust, and the
+ * Lyrics scrolling under the cover: the line being sung in the primary colour, the rest muted, and the
  * list follows the song (until you scroll it yourself; it picks up again 3 s later). Tap a line to
- * play from there. Unsynced lyrics just scroll as text.
+ * play from there. Unsynced lyrics just scroll as text. The top and bottom edges fade out with an
+ * alpha mask (DstIn), so the fade works on any background in both themes.
  */
 @Composable
 fun LyricsView(lyrics: Lyrics, positionMs: Long, onSeek: (Long) -> Unit, modifier: Modifier = Modifier) {
@@ -78,18 +79,18 @@ fun LyricsView(lyrics: Lyrics, positionMs: Long, onSeek: (Long) -> Unit, modifie
             itemsIndexed(lyrics.lines) { i, line ->
                 val color by animateColorAsState(
                     when {
-                        !lyrics.synced -> Tape.Cream.copy(alpha = 0.85f)
-                        i == current -> Tape.Cream
-                        i < current -> Tape.Dust.copy(alpha = 0.55f)
-                        else -> Tape.Dust
+                        !lyrics.synced -> Tape.Fg.copy(alpha = 0.85f)
+                        i == current -> Tape.Fg
+                        i < current -> Tape.FgMuted.copy(alpha = 0.55f)
+                        else -> Tape.FgMuted
                     },
                     tween(if (still) 0 else 250),
                     label = "lyric",
                 )
                 Text(
                     line.text.ifBlank { "♪" },
-                    fontFamily = Barlow,
-                    fontWeight = FontWeight.SemiBold,
+                    fontFamily = Mix,
+                    fontWeight = FontWeight.Bold,
                     fontSize = if (lyrics.synced) 24.sp else 20.sp,
                     lineHeight = if (lyrics.synced) 29.sp else 26.sp,
                     color = color,

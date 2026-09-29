@@ -14,7 +14,6 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
@@ -130,10 +129,11 @@ object ArtCache {
 @Composable
 fun rememberArtTint(uri: Uri?): Color {
     val context = LocalContext.current
-    val tint by produceState(Tape.DeckHigh, uri) {
+    // keyed on isDark so the no-art fallback follows the theme toggle
+    val tint by produceState(Tape.SurfaceHigh, uri, Tape.isDark) {
         val img = uri?.let { ArtCache.load(context, it, 144) }
         if (img == null) {
-            value = Tape.DeckHigh
+            value = Tape.SurfaceHigh
             return@produceState
         }
         value = withContext(Dispatchers.Default) {
@@ -143,7 +143,7 @@ fun rememberArtTint(uri: Uri?): Color {
                 val palette = Palette.from(bmp).generate()
                 val swatch = palette.mutedSwatch ?: palette.darkMutedSwatch ?: palette.dominantSwatch
                 swatch?.let { Color(it.rgb) }
-            }.getOrNull() ?: Tape.DeckHigh
+            }.getOrNull() ?: Tape.SurfaceHigh
         }
     }
     return tint
@@ -188,7 +188,7 @@ fun SongArt(
             Icon(
                 painterResource(R.drawable.ic_cassette),
                 contentDescription = null,
-                tint = Tape.Ink.copy(alpha = 0.6f),
+                tint = Tape.OnAccent.copy(alpha = 0.6f),
                 modifier = Modifier.fillMaxSize(0.55f),
             )
         }
@@ -208,17 +208,17 @@ fun ArtistAvatar(name: String, size: Dp, modifier: Modifier = Modifier) {
     ) {
         Text(
             name.trim().firstOrNull()?.uppercase() ?: "?",
-            fontFamily = Barlow,
+            fontFamily = Mix,
             fontWeight = FontWeight.Bold,
             fontSize = (size.value * 0.45f).sp,
-            color = Tape.Ink.copy(alpha = 0.8f),
+            color = Tape.OnAccent.copy(alpha = 0.8f),
         )
     }
 }
 
 /** Three bouncing bars next to the song that's playing; frozen while paused. */
 @Composable
-fun EqualizerBars(animating: Boolean, modifier: Modifier = Modifier, color: Color = Tape.Orange) {
+fun EqualizerBars(animating: Boolean, modifier: Modifier = Modifier, color: Color = Tape.Accent) {
     val t = rememberInfiniteTransition(label = "eq")
     val bars = listOf(430, 330, 520).map { ms ->
         t.animateFloat(0.2f, 1f, infiniteRepeatable(tween(ms, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "bar")
@@ -272,7 +272,7 @@ fun SongRow(
                 "%02d".format(number),
                 fontFamily = Mono,
                 fontSize = 13.sp,
-                color = if (current) Tape.Orange else Tape.Dust,
+                color = if (current) Tape.Accent else Tape.FgMuted,
                 modifier = Modifier.width(32.dp),
             )
         }
@@ -283,14 +283,14 @@ fun SongRow(
                 song.title,
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = if (current) FontWeight.SemiBold else FontWeight.Normal,
-                color = if (current) Tape.Orange else Tape.Cream,
+                color = if (current) Tape.Accent else Tape.Fg,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
                 song.artist,
                 style = MaterialTheme.typography.bodyMedium,
-                color = Tape.Dust,
+                color = Tape.FgMuted,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -299,7 +299,7 @@ fun SongRow(
         when {
             trailing != null -> trailing()
             current -> EqualizerBars(animating = playing)
-            else -> Text(formatDuration(song.durationMs), fontFamily = Mono, fontSize = 12.sp, color = Tape.Dust)
+            else -> Text(formatDuration(song.durationMs), fontFamily = Mono, fontSize = 12.sp, color = Tape.FgMuted)
         }
     }
 }
@@ -313,7 +313,7 @@ fun SectionTitle(text: String, modifier: Modifier = Modifier, action: (@Composab
             .padding(start = 16.dp, end = 8.dp, top = 18.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(text, style = MaterialTheme.typography.titleLarge, color = Tape.Cream, modifier = Modifier.weight(1f))
+        Text(text, style = MaterialTheme.typography.titleLarge, color = Tape.Fg, modifier = Modifier.weight(1f))
         action?.invoke()
     }
 }
@@ -344,8 +344,9 @@ fun rememberPlaybackPosition(player: PlayerUi): Long {
 }
 
 /**
- * The mini player above the tab bar. Tap or drag up to open Now Playing (it follows the finger);
- * swipe left / right for next / previous.
+ * The mini player: a floating glass capsule above the tab bar. Tap or drag up to open Now Playing (it
+ * follows the finger); swipe left / right for next / previous. A thin line along its bottom shows the
+ * progress through the song. Picks the blur backdrop up from [LocalGlassBackdrop].
  */
 @Composable
 fun MiniPlayer(
@@ -363,104 +364,132 @@ fun MiniPlayer(
     val slide = remember { Animatable(0f) }
     val drag by rememberUpdatedState(onSheetDrag)
     val release by rememberUpdatedState(onSheetRelease)
+    val shape = RoundedCornerShape(28.dp)
 
-    Surface(color = Tape.Deck, modifier = modifier.fillMaxWidth()) {
-        Column {
-            TapeStrip(fraction, moving = player.isPlaying)
+    Box(
+        modifier
+            .fillMaxWidth()
+            .glass(shape, LocalGlassBackdrop.current, GlassStrength.Regular)
+    ) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clip(shape) // keeps the press ripple inside the capsule
+                .semantics {
+                    customActions = listOf(
+                        CustomAccessibilityAction("Next song") { player.next(); true },
+                        CustomAccessibilityAction("Previous song") { player.previous(); true },
+                    )
+                }
+                .clickable(onClickLabel = "Open player", onClick = onOpen)
+                .pointerInput(Unit) {
+                    var axis = 0 // 0 undecided, 1 horizontal (skip), 2 vertical (open)
+                    var dx = 0f
+                    val tracker = VelocityTracker()
+                    detectDragGestures(
+                        onDragStart = {
+                            axis = 0
+                            dx = 0f
+                            tracker.resetTracking()
+                        },
+                        onDrag = { change, amount ->
+                            change.consume()
+                            if (axis == 0) axis = if (abs(amount.x) > abs(amount.y)) 1 else 2
+                            tracker.addPosition(change.uptimeMillis, change.position)
+                            if (axis == 1) {
+                                dx += amount.x
+                                scope.launch { slide.snapTo(dx) }
+                            } else {
+                                drag(amount.y)
+                            }
+                        },
+                        onDragEnd = {
+                            if (axis == 1) {
+                                val threshold = size.width * 0.22f
+                                when {
+                                    dx < -threshold -> player.next()
+                                    dx > threshold -> player.previous()
+                                }
+                                scope.launch { slide.animateTo(0f, tween(220)) }
+                            } else if (axis == 2) {
+                                release(tracker.calculateVelocity().y)
+                            }
+                        },
+                        onDragCancel = {
+                            scope.launch { slide.animateTo(0f, tween(220)) }
+                            if (axis == 2) release(0f)
+                        },
+                    )
+                }
+                .padding(start = 10.dp, end = 6.dp, top = 8.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Row(
                 Modifier
-                    .fillMaxWidth()
-                    .semantics {
-                        customActions = listOf(
-                            CustomAccessibilityAction("Next song") { player.next(); true },
-                            CustomAccessibilityAction("Previous song") { player.previous(); true },
-                        )
-                    }
-                    .clickable(onClickLabel = "Open player", onClick = onOpen)
-                    .pointerInput(Unit) {
-                        var axis = 0 // 0 undecided, 1 horizontal (skip), 2 vertical (open)
-                        var dx = 0f
-                        val tracker = VelocityTracker()
-                        detectDragGestures(
-                            onDragStart = {
-                                axis = 0
-                                dx = 0f
-                                tracker.resetTracking()
-                            },
-                            onDrag = { change, amount ->
-                                change.consume()
-                                if (axis == 0) axis = if (abs(amount.x) > abs(amount.y)) 1 else 2
-                                tracker.addPosition(change.uptimeMillis, change.position)
-                                if (axis == 1) {
-                                    dx += amount.x
-                                    scope.launch { slide.snapTo(dx) }
-                                } else {
-                                    drag(amount.y)
-                                }
-                            },
-                            onDragEnd = {
-                                if (axis == 1) {
-                                    val threshold = size.width * 0.22f
-                                    when {
-                                        dx < -threshold -> player.next()
-                                        dx > threshold -> player.previous()
-                                    }
-                                    scope.launch { slide.animateTo(0f, tween(220)) }
-                                } else if (axis == 2) {
-                                    release(tracker.calculateVelocity().y)
-                                }
-                            },
-                            onDragCancel = {
-                                scope.launch { slide.animateTo(0f, tween(220)) }
-                                if (axis == 2) release(0f)
-                            },
-                        )
-                    }
-                    .padding(start = 12.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+                    .weight(1f)
+                    .offset { IntOffset(slide.value.roundToInt(), 0) },
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Row(
-                    Modifier
-                        .weight(1f)
-                        .offset { IntOffset(slide.value.roundToInt(), 0) },
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    SongArt(
-                        player.mediaId?.let(Uri::parse),
-                        Modifier.size(44.dp),
-                        seed = player.currentFolder,
-                        artworkData = md.artworkData,
+                SongArt(
+                    player.mediaId?.let(Uri::parse),
+                    Modifier.size(44.dp),
+                    corner = 12.dp,
+                    seed = player.currentFolder,
+                    artworkData = md.artworkData,
+                )
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        md.title?.toString().orEmpty(),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = Tape.Fg,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            md.title?.toString().orEmpty(),
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = Tape.Cream,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        Text(
-                            md.artist?.toString().orEmpty(),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = Tape.Dust,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
-                IconButton(onClick = player::playPause) {
-                    Icon(
-                        if (player.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                        contentDescription = if (player.isPlaying) "Pause" else "Play",
-                        tint = Tape.Cream,
-                        modifier = Modifier.size(30.dp),
+                    Text(
+                        md.artist?.toString().orEmpty(),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Tape.FgMuted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
-                }
-                IconButton(onClick = { player.next() }) {
-                    Icon(Icons.Rounded.SkipNext, contentDescription = "Next", tint = Tape.Cream)
                 }
             }
+            IconButton(onClick = player::playPause) {
+                Icon(
+                    if (player.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                    contentDescription = if (player.isPlaying) "Pause" else "Play",
+                    tint = Tape.Fg,
+                    modifier = Modifier.size(30.dp),
+                )
+            }
+            IconButton(onClick = { player.next() }) {
+                Icon(Icons.Rounded.SkipNext, contentDescription = "Next", tint = Tape.Fg)
+            }
+        }
+        // progress: a thin rounded line inside the capsule's bottom edge (it sits in the row's 8dp bottom padding)
+        MiniProgress(
+            fraction,
+            Modifier
+                .align(Alignment.BottomCenter)
+                .padding(horizontal = 26.dp, vertical = 3.dp),
+        )
+    }
+}
+
+/** The mini player's progress line: Hairline track, Accent for the part already played. */
+@Composable
+private fun MiniProgress(fraction: Float, modifier: Modifier = Modifier) {
+    Canvas(
+        modifier
+            .fillMaxWidth()
+            .height(3.dp)
+    ) {
+        val r = CornerRadius(size.height / 2f)
+        drawRoundRect(Tape.Hairline, cornerRadius = r)
+        val played = size.width * fraction.coerceIn(0f, 1f)
+        if (played > 0f) {
+            drawRoundRect(Tape.Accent, size = androidx.compose.ui.geometry.Size(played, size.height), cornerRadius = r)
         }
     }
 }
@@ -563,25 +592,34 @@ fun TapeSeekBar(
         val y = size.height / 2
         val stroke = 3.dp.toPx()
         val x = size.width * fraction.coerceIn(0f, 1f)
-        drawLine(Tape.Line, Offset(0f, y), Offset(size.width, y), stroke, StrokeCap.Round)
-        drawLine(Tape.Orange, Offset(0f, y), Offset(x, y), stroke, StrokeCap.Round)
-        drawCircle(Tape.Orange, if (dragging) 9.dp.toPx() else 6.dp.toPx(), Offset(x, y))
+        // The track is FgMuted at low alpha rather than Hairline: Hairline is too faint on the light paper
+        // (and on Now Playing's tinted wash) for a control you have to find with your thumb.
+        drawLine(Tape.FgMuted.copy(alpha = 0.35f), Offset(0f, y), Offset(size.width, y), stroke, StrokeCap.Round)
+        drawLine(Tape.Accent, Offset(0f, y), Offset(x, y), stroke, StrokeCap.Round)
+        drawCircle(Tape.Accent, if (dragging) 9.dp.toPx() else 6.dp.toPx(), Offset(x, y))
     }
 }
 
-/** Pill toggle used for section switches (Tapes / Artists / Songs). */
+/**
+ * Pill toggle used for section switches (Tapes / Artists / Songs). Selected is a Fg-filled pill; the
+ * others are thin glass chips (no blur: they sit on the page, not floating over content).
+ */
 @Composable
 fun Pill(text: String, selected: Boolean, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
+        modifier = if (selected) {
+            Modifier
+        } else {
+            Modifier.glass(CircleShape, backdrop = null, strength = GlassStrength.Thin, elevation = 0.dp)
+        },
         shape = CircleShape,
-        color = if (selected) Tape.Cream else Color.Transparent,
-        border = if (selected) null else BorderStroke(1.dp, Tape.Line),
+        color = if (selected) Tape.Fg else Color.Transparent,
     ) {
         Text(
             text,
             style = MaterialTheme.typography.labelLarge,
-            color = if (selected) Tape.Ink else Tape.Dust,
+            color = if (selected) Tape.Bg else Tape.Fg,
             modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp),
         )
     }

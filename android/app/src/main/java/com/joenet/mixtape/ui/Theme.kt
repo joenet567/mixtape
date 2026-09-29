@@ -140,22 +140,6 @@ object Tape {
 
     /** Stable per-playlist label color, so each tape keeps its look. */
     fun labelColor(key: String): Color = labels[(key.lowercase().hashCode() and 0x7fffffff) % labels.size]
-
-    // LEGACY: delete once every screen is migrated
-    // Fixed dark values, kept only so screens that have not moved to the tokens above still compile.
-    @Deprecated("Use Tape.Bg", ReplaceWith("Tape.Bg"))
-    val Ink = Color(0xFF14110E)
-    @Deprecated("Use Tape.Surface", ReplaceWith("Tape.Surface"))
-    val Deck = Color(0xFF1D1915)
-    @Deprecated("Use Tape.SurfaceHigh", ReplaceWith("Tape.SurfaceHigh"))
-    val DeckHigh = Color(0xFF28221C)
-    @Deprecated("Use Tape.Hairline", ReplaceWith("Tape.Hairline"))
-    val Line = Color(0xFF3A3129)
-    @Deprecated("Use Tape.Fg (or Tape.OnCover over art)", ReplaceWith("Tape.Fg"))
-    val Cream = Color(0xFFF3E9DC)
-    @Deprecated("Use Tape.FgMuted", ReplaceWith("Tape.FgMuted"))
-    val Dust = Color(0xFFA3927F)
-    // END LEGACY
 }
 
 /**
@@ -170,14 +154,6 @@ val Mix = FontFamily(
     Font(R.font.figtree, FontWeight.Bold, variationSettings = FontVariation.Settings(FontVariation.weight(700))),
     Font(R.font.figtree, FontWeight.ExtraBold, variationSettings = FontVariation.Settings(FontVariation.weight(800))),
 )
-
-// LEGACY: delete once every screen is migrated
-@Deprecated("Use Mix", ReplaceWith("Mix"))
-val Marker = Mix
-
-@Deprecated("Use Mix", ReplaceWith("Mix"))
-val Barlow = Mix
-// END LEGACY
 
 /** The tape counter. */
 val Mono = FontFamily.Monospace

@@ -2,16 +2,13 @@ package com.joenet.mixtape.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
@@ -47,9 +44,6 @@ import com.joenet.mixtape.Route
 import com.joenet.mixtape.Song
 import com.joenet.mixtape.TapeRef
 
-/** The sheet's own shape (the Material default, spelled out so the glass rim can match it exactly). */
-private val SheetShape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp, bottomEnd = 0.dp, bottomStart = 0.dp)
-
 /** Long-press on any song: its actions, in a sheet styled like a tape insert. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -57,30 +51,17 @@ fun SongActionsSheet(vm: MainViewModel, song: Song, onDismiss: () -> Unit) {
     val state = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val done = { onDismiss() }
     // The sheet lives in its own window and cannot blur the app behind it, so it is a near-opaque glass tint plus a
-    // rim highlight. The drag handle is drawn inside the rim container (dragHandle = null) so the highlight runs
-    // along the sheet's real top edge; the whole sheet still drags.
+    // rim highlight. GlassSheetBody draws the handle and the rim inside the sheet (dragHandle = null) so the
+    // highlight runs along the sheet's real top edge; the whole sheet still drags.
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = state,
-        shape = SheetShape,
+        shape = GlassSheetShape,
         containerColor = glassContainerColor(),
         contentColor = Tape.Fg,
         dragHandle = null,
     ) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .glassRim(SheetShape)
-                .navigationBarsPadding(),
-        ) {
-            Box(
-                Modifier
-                    .align(Alignment.CenterHorizontally)
-                    .padding(vertical = 18.dp)
-                    .size(width = 32.dp, height = 4.dp)
-                    .clip(CircleShape)
-                    .background(Tape.FgMuted.copy(alpha = 0.55f)),
-            )
+        GlassSheetBody {
             InsertHeader(song)
             Spacer(Modifier.height(6.dp))
             ActionRow(rememberVectorPainter(Icons.AutoMirrored.Rounded.PlaylistPlay), "Play next") {

@@ -5,12 +5,18 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -92,7 +98,8 @@ import kotlin.math.ceil
  * The source layer can only be drawn by nodes of the same window. A `Dialog`, `AlertDialog`,
  * `ModalBottomSheet` or `DropdownMenu` lives in its own window and cannot sample the app's layer, so pass
  * `backdrop = null` there (the surface then falls back to the higher-alpha tint, which is what
- * [glassContainerColor] gives Material containers) and use [glassRim] for the highlight.
+ * [glassContainerColor] gives Material containers) and use [glassRim] for the highlight (bottom sheets use
+ * [GlassSheetBody], which draws the rim inside the sheet where it follows the sheet's drag).
  *
  * ## Wiring
  *
@@ -289,6 +296,38 @@ fun Modifier.glassRim(shape: Shape = RoundedCornerShape(28.dp)): Modifier =
             drawGlassRim(shape, dark, 0f)
         }
     }
+
+/** The shape of a bottom sheet: top corners rounded (the Material default, spelled out so [GlassSheetBody]'s rim matches it exactly). */
+val GlassSheetShape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp, bottomEnd = 0.dp, bottomStart = 0.dp)
+
+/**
+ * The content of a `ModalBottomSheet` styled as glass. Use it as the sheet's only child, with
+ * `shape = GlassSheetShape`, `containerColor = glassContainerColor()` and `dragHandle = null`.
+ *
+ * The rim is drawn here, inside the sheet, and not through `ModalBottomSheet(modifier = ...)`: Material applies the
+ * sheet's position offset after the caller's modifier, so a rim passed there would be drawn at the un-offset position
+ * (the top of the screen) instead of on the sheet. The handle is drawn here too, so the rim runs along the sheet's
+ * real top edge; the whole sheet still drags. It also applies `navigationBarsPadding()`, so callers must not.
+ */
+@Composable
+fun GlassSheetBody(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+    Column(
+        modifier
+            .fillMaxWidth()
+            .glassRim(GlassSheetShape)
+            .navigationBarsPadding(),
+    ) {
+        Box(
+            Modifier
+                .align(Alignment.CenterHorizontally)
+                .padding(vertical = 18.dp)
+                .size(width = 32.dp, height = 4.dp)
+                .clip(CircleShape)
+                .background(Tape.FgMuted.copy(alpha = 0.55f)),
+        )
+        content()
+    }
+}
 
 /** A glass panel: [Modifier.glass] on a Box, with `Tape.Fg` as the content colour. */
 @Composable

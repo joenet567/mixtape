@@ -1,6 +1,7 @@
 package com.joenet.mixtape.ui
 
 import android.net.Uri
+import android.os.Build
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateDpAsState
@@ -31,6 +32,7 @@ import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
@@ -65,7 +67,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -80,6 +86,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Velocity
@@ -101,6 +108,15 @@ import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 import kotlin.math.abs
 
+/** The hero cover's width as a fraction of the available width: full player, and with the lyrics showing. */
+private const val HERO_FULL = 0.86f
+private const val HERO_COMPACT = 0.52f
+
+/**
+ * Now Playing: a sheet of its own over the app, with its own glass backdrop. The cover is the hero (a
+ * live cassette badge on its corner; tap turns the tape over to the full cassette), the transport sits
+ * on a glass panel, and the page is washed with the cover's colour.
+ */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun NowPlayingScreen(
@@ -123,12 +139,14 @@ fun NowPlayingScreen(
     val fraction = scrub ?: if (duration > 0) (pos.toFloat() / duration).coerceIn(0f, 1f) else 0f
     val shownPos = (fraction * duration).toLong()
     val tint by animateColorAsState(rememberArtTint(uri), tween(700), label = "tint")
-    val plastic = rememberBrushedPlastic()
+    // The sheet is its own layer over the app, so its glass blurs its own backdrop, not the app's.
+    val np = rememberGlassBackdrop()
     val drag by rememberUpdatedState(onSheetDrag)
     val release by rememberUpdatedState(onSheetRelease)
     val lyrics by produceState<Lyrics?>(null, player.currentKey) { value = vm.lyricsFor(player.currentKey) }
     val compact = vm.showLyrics && lyrics != null
-    val tapeWidth by animateFloatAsState(if (compact) 0.52f else 1f, tween(if (rememberReduceMotion()) 0 else 300), label = "tape")
+    // The hero's width as a fraction of the available width; it shrinks while the lyrics are showing.
+    val tapeWidth by animateFloatAsState(if (compact) HERO_COMPACT else HERO_FULL, tween(if (rememberReduceMotion()) 0 else 300), label = "tape")
     var showSleep by remember { mutableStateOf(false) }
 
     // Lyrics scroll on their own; pulling well past the first line folds the player away. (The sheet
@@ -156,9 +174,6 @@ fun NowPlayingScreen(
     Box(
         modifier
             .fillMaxSize()
-            .background(Tape.Ink)
-            .background(plastic)
-            .background(Brush.verticalGradient(0f to tint.copy(alpha = 0.2f), 0.75f to Color.Transparent))
             // drag down anywhere to fold the player back into the mini player
             .pointerInput(Unit) {
                 val tracker = VelocityTracker()
@@ -174,6 +189,38 @@ fun NowPlayingScreen(
                 )
             }
     ) {
+        // The glass source: everything this sheet's glass blurs. The content below is a sibling AFTER it
+        // (never inside), so the glass sees the wash but never itself. It has an opaque background.
+        Box(
+            Modifier
+                .fillMaxSize()
+                .glassSource(np)
+                .background(Tape.Bg)
+        ) {
+            // A large, faint, blurred copy of the cover (the blur needs API 31; older phones just skip it).
+            if (Build.VERSION.SDK_INT >= 31 && uri != null) {
+                SongArt(
+                    uri,
+                    Modifier
+                        .fillMaxSize()
+                        .alpha(0.28f)
+                        .blur(56.dp),
+                    px = 144,
+                    corner = 0.dp,
+                    seed = folder,
+                    artworkData = md.artworkData,
+                )
+            }
+            // The cover's colour, falling from the top and reaching most of the way down.
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .drawBehind {
+                        drawRect(Brush.verticalGradient(0f to tint.copy(alpha = 0.30f), 0.9f to Color.Transparent))
+                    }
+            )
+        }
+
         Column(
             Modifier
                 .fillMaxSize()
@@ -187,25 +234,30 @@ fun NowPlayingScreen(
                     .padding(vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                IconButton(onClick = onClose) {
-                    Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = "Close player", tint = Tape.Cream)
+                GlassIconButton(onClick = onClose, contentDescription = "Close player", backdrop = np) {
+                    Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = null, tint = Tape.Fg)
                 }
                 if (lyrics != null) {
-                    IconButton(onClick = { vm.updateShowLyrics(!vm.showLyrics) }) {
+                    GlassIconButton(
+                        onClick = { vm.updateShowLyrics(!vm.showLyrics) },
+                        contentDescription = if (vm.showLyrics) "Hide lyrics" else "Show lyrics",
+                        backdrop = np,
+                    ) {
                         Icon(
                             Icons.Rounded.Lyrics,
-                            contentDescription = if (vm.showLyrics) "Hide lyrics" else "Show lyrics",
-                            tint = if (vm.showLyrics) Tape.Cream else Tape.Dust,
+                            contentDescription = null,
+                            tint = if (vm.showLyrics) Tape.Fg else Tape.FgMuted,
                         )
                     }
                 } else {
-                    Spacer(Modifier.size(48.dp)) // keeps the tape name centred
+                    Spacer(Modifier.size(44.dp)) // keeps the tape name centred
                 }
                 Text(
                     folder,
-                    fontFamily = Marker,
-                    fontSize = 26.sp,
-                    color = Tape.Cream,
+                    fontFamily = Mix,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp,
+                    color = Tape.Fg,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     textAlign = TextAlign.Center,
@@ -214,127 +266,169 @@ fun NowPlayingScreen(
                         .clickable(enabled = song != null, onClickLabel = "Open this tape") {
                             song?.let { vm.open(Route.Tape(TapeRef.Folder(it.tapeKey))) }
                         }
-                        .semantics { contentDescription = "Playing from $folder" },
+                        .semantics { contentDescription = "Playing from $folder" }
+                        .padding(horizontal = 8.dp, vertical = 12.dp),
                 )
                 if (player.sleepOn) {
-                    SleepCounter(player.sleepAt, player.sleepEndOfSong) { showSleep = true }
+                    SleepCounter(player.sleepAt, player.sleepEndOfSong, np) { showSleep = true }
                 } else {
-                    IconButton(onClick = { showSleep = true }) {
-                        Icon(Icons.Rounded.Bedtime, contentDescription = "Sleep timer", tint = Tape.Dust)
+                    GlassIconButton(onClick = { showSleep = true }, contentDescription = "Sleep timer", backdrop = np) {
+                        Icon(Icons.Rounded.Bedtime, contentDescription = null, tint = Tape.FgMuted)
                     }
                 }
-                IconButton(onClick = { showQueue = true }, enabled = player.hasSong) {
-                    Icon(Icons.AutoMirrored.Rounded.QueueMusic, contentDescription = "Queue", tint = Tape.Cream)
+                GlassIconButton(
+                    onClick = { if (player.hasSong) showQueue = true },
+                    contentDescription = "Queue",
+                    backdrop = np,
+                ) {
+                    Icon(Icons.AutoMirrored.Rounded.QueueMusic, contentDescription = null, tint = Tape.Fg)
                 }
             }
 
-            Column(
+            // The hero region takes whatever height the title, seek bar and transport leave over, so a small
+            // phone shrinks the cover instead of pushing those off the screen.
+            BoxWithConstraints(
                 Modifier
                     .weight(1f)
-                    .fillMaxWidth(),
-                verticalArrangement = Arrangement.SpaceEvenly,
-                horizontalAlignment = Alignment.CenterHorizontally,
+                    .fillMaxWidth()
             ) {
-                SwipeableTape(
-                    onNext = { player.controller?.seekToNextMediaItem() },
-                    onPrevious = { player.controller?.seekToPreviousMediaItem() },
+                // 1 with the full-width hero, 0 with the compact (lyrics) hero; follows the width animation.
+                val roomy = ((tapeWidth - HERO_COMPACT) / (HERO_FULL - HERO_COMPACT)).coerceIn(0f, 1f)
+                // With lyrics showing, the cover gets at most half of the region and the lyrics take the rest.
+                val side = minOf(maxWidth * tapeWidth, maxHeight * (0.5f + 0.5f * roomy))
+                Column(
+                    Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    // Hero: the tape in its own shape. Tap to turn it over: Side B is the cover art.
-                    FlipTape(
-                        flipped = flipped,
-                        modifier = Modifier
-                            .fillMaxWidth(tapeWidth)
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                                onClickLabel = if (flipped) "Show side A" else "Turn the tape over to see the cover",
-                            ) { flipped = !flipped },
-                        front = {
-                            Cassette(
-                                label = folder.ifEmpty { "Mixtape" },
-                                labelColor = Tape.labelColor(folder),
-                                modifier = Modifier.fillMaxWidth(),
-                                progress = fraction,
-                                spinning = player.isPlaying,
-                                art = uri,
-                                footLeft = "SIDE A",
-                                footRight = formatDuration(duration),
-                            )
-                        },
-                        back = {
-                            TapeSideB(
-                                title = md.title?.toString().orEmpty(),
-                                artist = md.artist?.toString().orEmpty(),
-                                art = uri,
-                                labelColor = Tape.labelColor(folder),
-                                modifier = Modifier.fillMaxWidth(),
-                                artworkData = md.artworkData,
-                            )
-                        },
-                    )
-                }
-
-                lyrics?.takeIf { compact }?.let {
-                    LyricsView(
-                        it,
-                        positionMs = pos,
-                        onSeek = { ms -> player.seekTo(ms) },
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth()
-                            .nestedScroll(sheetScroll)
-                            .padding(vertical = 8.dp),
-                    )
-                }
-
-                Column(Modifier.fillMaxWidth()) {
-                    val still = rememberReduceMotion()
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                md.title?.toString() ?: "Nothing playing",
-                                style = MaterialTheme.typography.headlineSmall,
-                                color = Tape.Cream,
-                                maxLines = 1,
-                                overflow = if (still) TextOverflow.Ellipsis else TextOverflow.Clip,
-                                modifier = if (still) Modifier else Modifier.basicMarquee(),
-                            )
-                            Text(
-                                md.artist?.toString().orEmpty(),
-                                style = MaterialTheme.typography.titleMedium,
-                                color = Tape.Dust,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.clickable(enabled = song != null, onClickLabel = "Open artist") {
-                                    song?.artists?.firstOrNull()?.let { vm.open(Route.Artist(it)) }
-                                },
-                            )
-                        }
-                        if (song != null) {
-                            val liked = vm.isLiked(song)
-                            IconButton(onClick = { vm.toggleLike(song) }) {
-                                Icon(
-                                    if (liked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
-                                    contentDescription = if (liked) "Remove from Liked songs" else "Like",
-                                    tint = if (liked) Tape.Cream else Tape.Dust,
+                    SwipeableTape(
+                        onNext = { player.controller?.seekToNextMediaItem() },
+                        onPrevious = { player.controller?.seekToPreviousMediaItem() },
+                    ) {
+                        // Hero: the cover with a live cassette badge. Tap to turn it over to the full cassette.
+                        FlipTape(
+                            flipped = flipped,
+                            modifier = Modifier
+                                .size(side)
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                    onClickLabel = if (flipped) "Show the cover" else "Turn the tape over",
+                                ) { flipped = !flipped },
+                            front = {
+                                CoverWithTape(
+                                    art = uri,
+                                    artworkData = md.artworkData,
+                                    labelColor = Tape.labelColor(folder),
+                                    seed = folder,
+                                    progress = fraction,
+                                    spinning = player.isPlaying,
+                                    corner = 22.dp,
+                                    tapeFraction = 0.36f,
+                                    px = 720,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .shadow(
+                                            elevation = 18.dp,
+                                            shape = RoundedCornerShape(22.dp),
+                                            clip = false,
+                                            ambientColor = Color.Black.copy(alpha = 0.25f),
+                                            spotColor = Color.Black.copy(alpha = 0.40f),
+                                        )
+                                        .semantics {
+                                            contentDescription = "Cover of ${md.title?.toString().orEmpty()} by ${md.artist?.toString().orEmpty()}"
+                                        },
                                 )
-                            }
-                        }
+                            },
+                            back = {
+                                // Side A of the tape, still live: reels turn, the packs follow the song.
+                                Box(Modifier.size(side), contentAlignment = Alignment.Center) {
+                                    Cassette(
+                                        label = folder.ifEmpty { "Mixtape" },
+                                        labelColor = Tape.labelColor(folder),
+                                        modifier = Modifier.fillMaxWidth(),
+                                        progress = fraction,
+                                        spinning = player.isPlaying,
+                                        art = uri,
+                                        footLeft = "SIDE A",
+                                        footRight = formatDuration(duration),
+                                    )
+                                }
+                            },
+                        )
                     }
-                    Spacer(Modifier.height(10.dp))
-                    TapeSeekBar(
-                        fraction = fraction,
-                        enabled = duration > 0,
-                        onScrub = { scrub = it },
-                        onSeek = { player.seekTo((it * duration).toLong()) },
-                    )
-                    Row(Modifier.fillMaxWidth()) {
-                        Text(formatDuration(shownPos), fontFamily = Mono, fontSize = 13.sp, color = Tape.Cream)
-                        Spacer(Modifier.weight(1f))
-                        Text("-" + formatDuration(duration - shownPos), fontFamily = Mono, fontSize = 13.sp, color = Tape.Dust)
+
+                    lyrics?.takeIf { compact }?.let {
+                        LyricsView(
+                            it,
+                            positionMs = pos,
+                            onSeek = { ms -> player.seekTo(ms) },
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth()
+                                .nestedScroll(sheetScroll)
+                                .padding(vertical = 8.dp),
+                        )
                     }
                 }
+            }
 
+            Column(Modifier.fillMaxWidth()) {
+                val still = rememberReduceMotion()
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            md.title?.toString() ?: "Nothing playing",
+                            style = MaterialTheme.typography.headlineSmall,
+                            color = Tape.Fg,
+                            maxLines = 1,
+                            overflow = if (still) TextOverflow.Ellipsis else TextOverflow.Clip,
+                            modifier = if (still) Modifier else Modifier.basicMarquee(),
+                        )
+                        Text(
+                            md.artist?.toString().orEmpty(),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = Tape.FgMuted,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.clickable(enabled = song != null, onClickLabel = "Open artist") {
+                                song?.artists?.firstOrNull()?.let { vm.open(Route.Artist(it)) }
+                            },
+                        )
+                    }
+                    if (song != null) {
+                        val liked = vm.isLiked(song)
+                        IconButton(onClick = { vm.toggleLike(song) }) {
+                            Icon(
+                                if (liked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+                                contentDescription = if (liked) "Remove from Liked songs" else "Like",
+                                tint = if (liked) Tape.Fg else Tape.FgMuted,
+                            )
+                        }
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+                TapeSeekBar(
+                    fraction = fraction,
+                    enabled = duration > 0,
+                    onScrub = { scrub = it },
+                    onSeek = { player.seekTo((it * duration).toLong()) },
+                )
+                Row(Modifier.fillMaxWidth()) {
+                    Text(formatDuration(shownPos), fontFamily = Mono, fontSize = 13.sp, color = Tape.Fg)
+                    Spacer(Modifier.weight(1f))
+                    Text("-" + formatDuration(duration - shownPos), fontFamily = Mono, fontSize = 13.sp, color = Tape.FgMuted)
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
+            // The transport on its own glass panel (the keys are glass on glass, without blur of their own).
+            GlassSurface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(32.dp),
+                strength = GlassStrength.Regular,
+                backdrop = np,
+            ) {
                 DeckKeys(
                     playing = player.isPlaying,
                     shuffle = player.shuffle,
@@ -345,9 +439,12 @@ fun NowPlayingScreen(
                     onScrub = { forward -> player.scrub(forward) },
                     onShuffle = player::toggleShuffle,
                     onRepeat = player::cycleRepeat,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 14.dp),
                 )
             }
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(16.dp))
         }
     }
 
@@ -357,7 +454,7 @@ fun NowPlayingScreen(
 
 /** The sleep timer as a deck's tape counter: minutes and seconds left, or END for "end of this song". */
 @Composable
-private fun SleepCounter(sleepAt: Long, endOfSong: Boolean, onClick: () -> Unit) {
+private fun SleepCounter(sleepAt: Long, endOfSong: Boolean, backdrop: GlassBackdrop, onClick: () -> Unit) {
     val now by produceState(System.currentTimeMillis(), sleepAt) {
         while (true) {
             value = System.currentTimeMillis()
@@ -366,24 +463,26 @@ private fun SleepCounter(sleepAt: Long, endOfSong: Boolean, onClick: () -> Unit)
     }
     val left = ((sleepAt - now + 999) / 1000).coerceAtLeast(0)
     val shown = if (endOfSong) "END" else "%02d:%02d".format(left / 60, left % 60)
+    // A glass capsule like its neighbours (the round glass buttons), holding the counter's little LCD.
     Row(
         Modifier
-            .height(48.dp)
-            .clip(RoundedCornerShape(6.dp))
+            .height(44.dp)
+            .glass(CircleShape, backdrop, GlassStrength.Thin, elevation = 8.dp, interactive = true)
+            .clip(CircleShape)
             .clickable(onClickLabel = "Change the sleep timer", onClick = onClick)
             .semantics(mergeDescendants = true) {
                 contentDescription = if (endOfSong) "Sleep timer: stops after this song" else "Sleep timer: ${left / 60} minutes ${left % 60} seconds left"
             }
-            .padding(horizontal = 6.dp),
+            .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(Icons.Rounded.Bedtime, contentDescription = null, tint = Tape.Cream, modifier = Modifier.size(16.dp))
+        Icon(Icons.Rounded.Bedtime, contentDescription = null, tint = Tape.Fg, modifier = Modifier.size(16.dp))
         Row(
             Modifier
-                .padding(start = 5.dp)
+                .padding(start = 6.dp)
                 .clip(RoundedCornerShape(3.dp))
-                .background(Tape.Ink)
-                .border(1.dp, Tape.Line, RoundedCornerShape(3.dp))
+                .background(Tape.Bg)
+                .border(1.dp, Tape.Hairline, RoundedCornerShape(3.dp))
                 .padding(horizontal = 2.dp, vertical = 2.dp),
             horizontalArrangement = Arrangement.spacedBy(1.dp),
         ) {
@@ -392,10 +491,10 @@ private fun SleepCounter(sleepAt: Long, endOfSong: Boolean, onClick: () -> Unit)
                     ch.toString(),
                     fontFamily = Mono,
                     fontSize = 13.sp,
-                    color = Tape.Cream,
+                    color = Tape.Fg,
                     textAlign = TextAlign.Center,
                     modifier = if (ch == ':') Modifier else Modifier
-                        .background(Tape.DeckHigh, RoundedCornerShape(2.dp))
+                        .background(Tape.SurfaceHigh, RoundedCornerShape(2.dp))
                         .width(10.dp),
                 )
             }
@@ -412,31 +511,40 @@ private fun SleepSheet(vm: MainViewModel, onDismiss: () -> Unit) {
         vm.notify(note)
         onDismiss()
     }
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Tape.Deck) {
-        Text(
-            "Sleep timer",
-            style = MaterialTheme.typography.titleLarge,
-            color = Tape.Cream,
-            modifier = Modifier.padding(start = 20.dp, bottom = 4.dp),
-        )
-        Text(
-            "The music fades out over the last few seconds, then stops.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = Tape.Dust,
-            modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 8.dp),
-        )
-        for (m in listOf(15, 30, 45, 60)) {
-            val label = if (m == 60) "1 hour" else "$m minutes"
-            SleepOption(label) { set(m, "Stopping in $label") }
+    // A sheet lives in its own window and cannot blur the app: nearly opaque glass colour plus the rim, which
+    // GlassSheetBody draws inside the sheet (with the handle) so it follows the sheet's drag.
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        shape = GlassSheetShape,
+        containerColor = glassContainerColor(),
+        dragHandle = null,
+    ) {
+        GlassSheetBody {
+            Text(
+                "Sleep timer",
+                style = MaterialTheme.typography.titleLarge,
+                color = Tape.Fg,
+                modifier = Modifier.padding(start = 20.dp, bottom = 4.dp),
+            )
+            Text(
+                "The music fades out over the last few seconds, then stops.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = Tape.FgMuted,
+                modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 8.dp),
+            )
+            for (m in listOf(15, 30, 45, 60)) {
+                val label = if (m == 60) "1 hour" else "$m minutes"
+                SleepOption(label) { set(m, "Stopping in $label") }
+            }
+            SleepOption("End of this song") { set(PlaybackService.SLEEP_END_OF_SONG, "Stopping after this song") }
+            if (player.sleepOn) SleepOption("Turn off the timer", Tape.FgMuted) { set(0, "Sleep timer off") }
+            Spacer(Modifier.height(24.dp))
         }
-        SleepOption("End of this song") { set(PlaybackService.SLEEP_END_OF_SONG, "Stopping after this song") }
-        if (player.sleepOn) SleepOption("Turn off the timer", Tape.Dust) { set(0, "Sleep timer off") }
-        Spacer(Modifier.height(24.dp))
     }
 }
 
 @Composable
-private fun SleepOption(label: String, color: Color = Tape.Cream, onClick: () -> Unit) {
+private fun SleepOption(label: String, color: Color = Tape.Fg, onClick: () -> Unit) {
     Text(
         label,
         style = MaterialTheme.typography.bodyLarge,
@@ -517,84 +625,96 @@ private fun QueueSheet(vm: MainViewModel, onDismiss: () -> Unit) {
         }
     }
 
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = state, containerColor = Tape.Deck) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .padding(start = 20.dp, end = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("Up next", style = MaterialTheme.typography.titleLarge, color = Tape.Cream, modifier = Modifier.weight(1f))
-            if (view.queued.isNotEmpty()) {
-                TextButton(onClick = { player.clearQueued() }) { Text("Clear queue", color = Tape.Dust) }
+    // Opaque stand-in for the sheet's glass colour, so a row lifted over the swipe-to-delete red matches it.
+    val rowColor = glassContainerColor().copy(alpha = 1f)
+    // GlassSheetBody draws the glass rim and the handle inside the sheet (a rim passed through the sheet's
+    // modifier would be drawn at the un-offset position, not on the sheet).
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = state,
+        shape = GlassSheetShape,
+        containerColor = glassContainerColor(),
+        dragHandle = null,
+    ) {
+        GlassSheetBody {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(start = 20.dp, end = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Up next", style = MaterialTheme.typography.titleLarge, color = Tape.Fg, modifier = Modifier.weight(1f))
+                if (view.queued.isNotEmpty()) {
+                    TextButton(onClick = { player.clearQueued() }) { Text("Clear queue", color = Tape.FgMuted) }
+                }
+                TextButton(onClick = { savingAsTape = true }) { Text("Save as tape", color = Tape.FgMuted) }
             }
-            TextButton(onClick = { savingAsTape = true }) { Text("Save as tape", color = Tape.Dust) }
-        }
-        if (savingAsTape) {
-            TapeEditorDialog(
-                title = "Save the queue as a tape",
-                confirm = "Record",
-                initialColor = Tape.labels.indices.random(),
-                onDismiss = { savingAsTape = false },
-                onConfirm = { name, color ->
-                    savingAsTape = false
-                    val songs = player.queueKeys().mapNotNull { vm.songFor(it) }
-                    vm.createTape(name, color, songs, openIt = false)
-                },
-            )
-        }
-        LazyColumn(state = listState, modifier = Modifier.fillMaxWidth()) {
-            view.current?.let { cur ->
-                item(key = "h:now") { QueueHeader("Now playing") }
-                item(key = "now") { QueueRow(vm, cur, current = true, handle = null) }
+            if (savingAsTape) {
+                TapeEditorDialog(
+                    title = "Save the queue as a tape",
+                    confirm = "Record",
+                    initialColor = Tape.labels.indices.random(),
+                    onDismiss = { savingAsTape = false },
+                    onConfirm = { name, color ->
+                        savingAsTape = false
+                        val songs = player.queueKeys().mapNotNull { vm.songFor(it) }
+                        vm.createTape(name, color, songs, openIt = false)
+                    },
+                )
             }
-            upcoming.forEachIndexed { i, entry ->
-                if (i == 0 && queuedCount > 0) item(key = "h:queued") { QueueHeader("Next in queue") }
-                if (i == queuedCount) item(key = "h:rest") { QueueHeader(view.restFrom?.let { "Next from: $it" } ?: "Next up") }
-                item(key = entry.item.qid) {
-                    ReorderableItem(reorder, key = entry.item.qid) { dragging ->
-                        val lift by animateDpAsState(if (dragging) 6.dp else 0.dp, label = "lift")
-                        val dismiss = rememberSwipeToDismissBoxState(confirmValueChange = { v ->
-                            if (v != SwipeToDismissBoxValue.Settled) {
-                                player.remove(entry.index)
-                                true
-                            } else false
-                        })
-                        SwipeToDismissBox(
-                            state = dismiss,
-                            backgroundContent = {
-                                Box(
-                                    Modifier
-                                        .fillMaxSize()
-                                        .background(Tape.Brick.copy(alpha = 0.35f))
-                                        .padding(horizontal = 24.dp),
-                                    contentAlignment = Alignment.CenterEnd,
-                                ) { Icon(Icons.Rounded.Delete, contentDescription = null, tint = Tape.Cream) }
-                            },
-                        ) {
-                            Surface(color = Tape.Deck, shadowElevation = lift) {
-                                QueueRow(
-                                    vm, entry, current = false,
-                                    handle = Modifier.draggableHandle(
-                                        onDragStarted = {
-                                            dragFrom = entry.index
-                                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        },
-                                        onDragStopped = {
-                                            val from = dragFrom
-                                            dragFrom = null
-                                            val newPos = upcoming.indexOfFirst { it.item.qid == entry.item.qid }
-                                            val target = (view.current?.index ?: -1) + 1 + newPos
-                                            if (from != null && newPos >= 0) player.move(from, target)
-                                        },
-                                    ),
-                                )
+            LazyColumn(state = listState, modifier = Modifier.fillMaxWidth()) {
+                view.current?.let { cur ->
+                    item(key = "h:now") { QueueHeader("Now playing") }
+                    item(key = "now") { QueueRow(vm, cur, current = true, handle = null) }
+                }
+                upcoming.forEachIndexed { i, entry ->
+                    if (i == 0 && queuedCount > 0) item(key = "h:queued") { QueueHeader("Next in queue") }
+                    if (i == queuedCount) item(key = "h:rest") { QueueHeader(view.restFrom?.let { "Next from: $it" } ?: "Next up") }
+                    item(key = entry.item.qid) {
+                        ReorderableItem(reorder, key = entry.item.qid) { dragging ->
+                            val lift by animateDpAsState(if (dragging) 6.dp else 0.dp, label = "lift")
+                            val dismiss = rememberSwipeToDismissBoxState(confirmValueChange = { v ->
+                                if (v != SwipeToDismissBoxValue.Settled) {
+                                    player.remove(entry.index)
+                                    true
+                                } else false
+                            })
+                            SwipeToDismissBox(
+                                state = dismiss,
+                                backgroundContent = {
+                                    Box(
+                                        Modifier
+                                            .fillMaxSize()
+                                            .background(Tape.Brick.copy(alpha = 0.35f))
+                                            .padding(horizontal = 24.dp),
+                                        contentAlignment = Alignment.CenterEnd,
+                                    ) { Icon(Icons.Rounded.Delete, contentDescription = null, tint = Tape.Fg) }
+                                },
+                            ) {
+                                Surface(color = rowColor, shadowElevation = lift) {
+                                    QueueRow(
+                                        vm, entry, current = false,
+                                        handle = Modifier.draggableHandle(
+                                            onDragStarted = {
+                                                dragFrom = entry.index
+                                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            },
+                                            onDragStopped = {
+                                                val from = dragFrom
+                                                dragFrom = null
+                                                val newPos = upcoming.indexOfFirst { it.item.qid == entry.item.qid }
+                                                val target = (view.current?.index ?: -1) + 1 + newPos
+                                                if (from != null && newPos >= 0) player.move(from, target)
+                                            },
+                                        ),
+                                    )
+                                }
                             }
                         }
                     }
                 }
+                item(key = "end") { Spacer(Modifier.height(24.dp)) }
             }
-            item(key = "end") { Spacer(Modifier.height(24.dp)) }
         }
     }
 }
@@ -604,7 +724,7 @@ private fun QueueHeader(text: String) {
     Text(
         text,
         style = MaterialTheme.typography.titleSmall,
-        color = Tape.Dust,
+        color = Tape.FgMuted,
         modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 4.dp),
     )
 }
@@ -628,14 +748,14 @@ private fun QueueRow(vm: MainViewModel, entry: QueueEntry, current: Boolean, han
             Text(
                 item.mediaMetadata.title?.toString().orEmpty(),
                 style = MaterialTheme.typography.bodyLarge,
-                color = if (current) Tape.Orange else Tape.Cream,
+                color = if (current) Tape.Accent else Tape.Fg,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
                 item.mediaMetadata.artist?.toString().orEmpty(),
                 style = MaterialTheme.typography.bodyMedium,
-                color = Tape.Dust,
+                color = Tape.FgMuted,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -644,7 +764,7 @@ private fun QueueRow(vm: MainViewModel, entry: QueueEntry, current: Boolean, han
             EqualizerBars(animating = vm.player.isPlaying, modifier = Modifier.padding(end = 12.dp))
         } else if (handle != null) {
             IconButton(onClick = {}, modifier = handle) {
-                Icon(Icons.Rounded.DragHandle, contentDescription = "Reorder", tint = Tape.Dust)
+                Icon(Icons.Rounded.DragHandle, contentDescription = "Reorder", tint = Tape.FgMuted)
             }
         }
     }

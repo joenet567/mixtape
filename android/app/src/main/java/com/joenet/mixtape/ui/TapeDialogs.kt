@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -149,10 +148,16 @@ fun TapeEditorDialog(
 fun AddToTapeSheet(vm: MainViewModel, songs: List<Song>, onDismiss: () -> Unit) {
     var creating by remember { mutableStateOf(false) }
     val state = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    // No rim highlight here: ModalBottomSheet's modifier is applied before the sheet's drag offset, so a rim
-    // drawn from it would not follow the sheet.
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = state, containerColor = glassContainerColor()) {
-        Column(Modifier.navigationBarsPadding()) {
+    // The rim and the drag handle are drawn inside the sheet by GlassSheetBody (which also applies the navigation-bar
+    // padding): a rim passed through ModalBottomSheet's modifier would be drawn at the un-offset position, not on the sheet.
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = state,
+        shape = GlassSheetShape,
+        containerColor = glassContainerColor(),
+        dragHandle = null,
+    ) {
+        GlassSheetBody {
             Text(
                 if (songs.size == 1) "Add “${songs.first().title}” to a tape" else "Add ${songCount(songs.size)} to a tape",
                 style = MaterialTheme.typography.titleLarge,

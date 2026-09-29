@@ -8,7 +8,6 @@ import android.util.LruCache
 import android.util.Size
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -66,10 +65,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.ImageShader
-import androidx.compose.ui.graphics.ShaderBrush
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -491,56 +487,6 @@ private fun MiniProgress(fraction: Float, modifier: Modifier = Modifier) {
         if (played > 0f) {
             drawRoundRect(Tape.Accent, size = androidx.compose.ui.geometry.Size(played, size.height), cornerRadius = r)
         }
-    }
-}
-
-/**
- * A barely-there brushed-plastic texture for the deck's background: horizontal streaks of noise,
- * generated once and tiled.
- */
-@Composable
-fun rememberBrushedPlastic(): Brush = remember {
-    val w = 256
-    val h = 64
-    val rnd = java.util.Random(7)
-    val px = IntArray(w * h)
-    for (y in 0 until h) {
-        val row = rnd.nextFloat()                   // each row gets its own sheen...
-        for (x in 0 until w) {
-            val v = 0.6f * row + 0.4f * rnd.nextFloat() // ...plus fine grain, so it reads as brushed
-            val a = (v * 14).toInt()                 // alpha 0..14 of 255: almost invisible
-            px[y * w + x] = (a shl 24) or 0xFFFFFF
-        }
-    }
-    val bmp = Bitmap.createBitmap(px, w, h, Bitmap.Config.ARGB_8888).asImageBitmap()
-    ShaderBrush(ImageShader(bmp, TileMode.Repeated, TileMode.Repeated))
-}
-
-/**
- * The mini player's progress: a thin strip of brown tape. The played part is orange (it's live),
- * and faint splice marks drift left to right while playing, like tape running between the reels.
- */
-@Composable
-fun TapeStrip(fraction: Float, moving: Boolean, modifier: Modifier = Modifier) {
-    val animate = moving && !rememberReduceMotion()
-    val phase = if (animate) {
-        val t = rememberInfiniteTransition(label = "tape")
-        t.animateFloat(0f, 1f, infiniteRepeatable(tween(1400, easing = LinearEasing)), label = "phase")
-    } else null
-    Canvas(
-        modifier
-            .fillMaxWidth()
-            .height(3.dp)
-    ) {
-        drawRect(Tape.TapeBrown)
-        val gap = 14.dp.toPx()
-        val shift = (phase?.value ?: 0f) * gap
-        var x = -gap + shift
-        while (x < size.width) {
-            drawRect(Tape.TapeEdge, topLeft = Offset(x, 0f), size = androidx.compose.ui.geometry.Size(2.dp.toPx(), size.height))
-            x += gap
-        }
-        drawRect(Tape.Orange, size = androidx.compose.ui.geometry.Size(size.width * fraction.coerceIn(0f, 1f), size.height))
     }
 }
 

@@ -64,19 +64,19 @@ On the phone, **Settings → Sync automatically** (on by default, after your fir
 
 ## App
 
-The look is cover-first, with a cassette deck's character. The cover art is the main element, and each tape keeps its identity as a small live cassette badge on the corner of its cover (the reels turn and the tape moves as it plays; the player flips to the full cassette). The theme is light, dark or follows the phone: warm paper by day, an espresso-black deck by night. Bars, the mini player, chips and dialogs are Liquid Glass, translucent surfaces that blur what scrolls beneath them (blur needs Android 12 or newer; older phones get a more opaque tint). Orange means something is live right now (the playing song, progress, the play light, REC) and is used for nothing else. Text is Figtree, an open geometric sans standing in for Spotify Mix, which is proprietary and can't be bundled; times use a monospace tape counter, printed legends (SIDE A, C-90, REC) are small tracked caps, and everything else is plain sentence case. With "Remove animations" on, the reels stand still.
+The look is cover-first, with a cassette deck's character. The cover art is the main element, and each tape keeps its identity as a small live cassette badge on the corner of its cover (the reels turn and the tape moves as it plays; the player flips to the full cassette). The theme is light, dark or follows the phone: warm paper by day, an espresso-black deck by night. The tab bar, the mini player and the player's controls are Liquid Glass: translucent surfaces that blur what's beneath them (blur needs Android 12 or newer; older phones get a more opaque tint). Cards, chips, dialogs and sheets use the same frosted look without the blur. Orange means something is live right now (the playing song, progress, the play light, REC) and is used for nothing else. Text is Figtree, an open geometric sans standing in for Spotify Mix, which is proprietary and can't be bundled; times use a monospace tape counter, printed legends (SIDE A, C-90, REC) are small tracked caps, and everything else is plain sentence case. With "Remove animations" on, the reels stand still.
 
-**Getting around** — three tabs on the deck's function selector, each with its own back stack (tap the tab you're on to go back to its top):
+**Getting around** — three tabs on the floating tab bar, each with its own back stack (tap the tab you're on to go back to its top):
 
 - **Home** knows your habits: *Jump back in* (continues a tape where you stopped), *New from your PC*, *On repeat*, *Forgotten favourites*, *Your Rewind* (this month's listening time, top songs and artists) and *Everything*.
 - **Search** ignores accents and word order ("son tung" finds "Sơn Tùng M-TP"): a top result, then songs, artists and tapes. With an empty box it shows recent searches and recently played songs.
-- **Library**: Tapes (Liked songs, the ones you recorded, and one per synced folder), Artists and Songs. The gear opens Settings.
+- **Library**: Tapes (Liked songs, the ones you recorded, and one per synced folder), Artists and Songs. The gear opens Settings. The sun / moon next to it switches between light and dark (Settings → Appearance also has *System*, which follows the phone).
 
 **Now playing** slides up from the mini player and follows your finger. Swipe the mini player sideways to skip.
 
-- The tape transport: the reels wind tape across as the song plays, and the emptier reel spins faster, like a real deck. Tap the cassette to turn it over (side B is the cover); swipe it to skip.
-- **Deck keys** for shuffle, rewind, play, fast-forward and repeat. Play latches down with a light; hold ◀◀ / ▶▶ to scrub.
-- **Lyrics** (the lyrics key, when the song has them): the line being sung is cream, the list follows the song, and tapping a line plays from there. Pull down past the first line to fold the player away.
+- The cover, with the tape's cassette on its corner: the reels wind tape across as the song plays, and the emptier reel spins faster, like a real deck. Tap the cover to turn it over to the full cassette; swipe it to skip.
+- **Deck keys** for shuffle, rewind, play, fast-forward and repeat, as round glass keys. The play key has an orange ring while music plays; shuffle and repeat stay filled while they're on; hold ◀◀ / ▶▶ to scrub.
+- **Lyrics** (the lyrics key, when the song has them): the line being sung is highlighted, the list follows the song, and tapping a line plays from there. Pull down past the first line to fold the player away.
 - **Sleep timer** (the moon): 15 / 30 / 45 / 60 minutes or the end of the song. It fades out over the last 10 seconds, and the time left shows as a tape counter.
 - **Queue**: now playing, *Next in queue* (what you added), and *Next from: the tape*. Drag to reorder, swipe to remove, *Clear queue*, *Save as tape*.
 
@@ -144,7 +144,8 @@ Stack: Kotlin 2.1, Jetpack Compose (Material 3 with a custom light and dark pale
 | `SyncManager.kt`, `SyncWorker.kt`, `Sidecar.kt` | LAN discovery and pull into `Music/<playlist>/`; the background job; lyrics and loudness from the PC |
 | `Lyrics.kt`, `ui/LyricsView.kt` | LRC parsing and the scrolling lyrics |
 | `QueueStore.kt` | Persists queue / position / shuffle / repeat |
-| `ui/Cassette.kt`, `ui/DeckKeys.kt`, `ui/NavBar.kt` | The Canvas-drawn cassette, the transport keys, the function selector |
+| `ui/Theme.kt`, `ui/Glass.kt` | Light / dark palette, fonts and theme mode; the hand-built Liquid Glass surfaces |
+| `ui/TapeCover.kt`, `ui/Cassette.kt`, `ui/DeckKeys.kt`, `ui/NavBar.kt` | Covers with the tape badge, the Canvas-drawn cassette, the transport keys, the tab bar |
 | `ui/*Screen.kt`, `ui/Components.kt`, `ui/SongActions.kt`, `ui/TapeDialogs.kt` | Screens and shared pieces |
 | `widget/` | The Glance home-screen widget |
 

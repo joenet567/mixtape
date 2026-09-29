@@ -5,22 +5,16 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import androidx.compose.material3.Text
@@ -167,81 +161,9 @@ fun Cassette(
 }
 
 /**
- * Side B of the tape: the cover art as the insert, cropped to the cassette's own frame, with the
- * title and artist written along the spine. Shown by flipping the tape over (see [FlipTape]).
- */
-@Composable
-fun TapeSideB(title: String, artist: String, art: Uri?, labelColor: Color, modifier: Modifier = Modifier, artworkData: ByteArray? = null) {
-    BoxWithConstraints(
-        modifier
-            .aspectRatio(CASSETTE_RATIO)
-            .semantics { contentDescription = "Side B: cover of $title by $artist" }
-    ) {
-        val w = constraints.maxWidth.toFloat()
-        val density = LocalDensity.current
-        fun sp(f: Float) = with(density) { (w * f).toSp() }
-        fun dp(f: Float) = with(density) { (w * f).toDp() }
-        val shape = RoundedCornerShape(dp(0.045f))
-        Box(
-            Modifier
-                .fillMaxSize()
-                .clip(shape)
-                .background(Brush.verticalGradient(listOf(Shell, ShellDark)))
-                .padding(dp(0.03f))
-        ) {
-            Column(Modifier.fillMaxSize()) {
-                // the insert: cover art, center-cropped to fill
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .clip(RoundedCornerShape(dp(0.015f)))
-                ) {
-                    SongArt(art, Modifier.fillMaxSize(), px = 1024, corner = 0.dp, seed = title, artworkData = artworkData)
-                    Box(
-                        Modifier
-                            .fillMaxSize()
-                            .background(Brush.verticalGradient(0.6f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.25f)))
-                    )
-                }
-                // the spine, written on in biro
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(top = dp(0.02f))
-                        .clip(RoundedCornerShape(dp(0.012f)))
-                        .background(Tape.Paper)
-                        .padding(horizontal = dp(0.03f), vertical = dp(0.004f)),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Box(
-                        Modifier
-                            .size(dp(0.05f))
-                            .background(labelColor, RoundedCornerShape(dp(0.008f))),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text("B", style = TextStyle.Default, fontFamily = Mix, fontWeight = FontWeight.Bold, fontSize = sp(0.036f), color = Tape.PaperInk)
-                    }
-                    Text(
-                        "$title — $artist",
-                        style = TextStyle.Default,
-                        fontFamily = Mix,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = sp(0.075f),
-                        color = Tape.PaperInk,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(start = dp(0.025f)),
-                    )
-                }
-            }
-        }
-    }
-}
-
-/**
- * Turns the tape over in 3D: [front] (Side A, the cassette) when [flipped] is false, [back]
- * (Side B) when true. The back is pre-rotated so it isn't mirrored.
+ * Turns content over in 3D, showing [front] when [flipped] is false and [back] when true. The back is
+ * pre-rotated so it isn't mirrored. Now Playing uses the cover as the front and the full cassette as
+ * the back.
  */
 @Composable
 fun FlipTape(

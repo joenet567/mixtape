@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -35,6 +34,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -50,8 +50,18 @@ import com.joenet.mixtape.TapeRef
 fun SongActionsSheet(vm: MainViewModel, song: Song, onDismiss: () -> Unit) {
     val state = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val done = { onDismiss() }
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = state, containerColor = Tape.Deck) {
-        Column(Modifier.navigationBarsPadding()) {
+    // The sheet lives in its own window and cannot blur the app behind it, so it is a near-opaque glass tint plus a
+    // rim highlight. GlassSheetBody draws the handle and the rim inside the sheet (dragHandle = null) so the
+    // highlight runs along the sheet's real top edge; the whole sheet still drags.
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = state,
+        shape = GlassSheetShape,
+        containerColor = glassContainerColor(),
+        contentColor = Tape.Fg,
+        dragHandle = null,
+    ) {
+        GlassSheetBody {
             InsertHeader(song)
             Spacer(Modifier.height(6.dp))
             ActionRow(rememberVectorPainter(Icons.AutoMirrored.Rounded.PlaylistPlay), "Play next") {
@@ -98,18 +108,19 @@ fun SongActionsSheet(vm: MainViewModel, song: Song, onDismiss: () -> Unit) {
     }
 }
 
-/** A strip of J-card: the cover and the song written in biro on ruled paper. */
+/** A strip of J-card: the cover and the song printed on ruled paper (the paper is physical, so it never changes with the theme). */
 @Composable
 private fun InsertHeader(song: Song) {
     Row(
         Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
-            .clip(RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape(12.dp))
             .background(Tape.Paper)
             .drawBehind {
+                // Rules sit on the 26dp line boxes of the two text lines below (row padding 12dp + 6dp centring).
                 val rule = Color(0xFFCDBFA6)
-                var y = 30.dp.toPx()
+                var y = 18.dp.toPx()
                 while (y < size.height) {
                     drawLine(rule, Offset(92.dp.toPx(), y), Offset(size.width - 12.dp.toPx(), y), strokeWidth = 1.dp.toPx())
                     y += 26.dp.toPx()
@@ -120,14 +131,32 @@ private fun InsertHeader(song: Song) {
     ) {
         SongArt(song.uri, Modifier.size(64.dp), corner = 4.dp, seed = song.folder)
         Column(Modifier.padding(start = 16.dp)) {
-            Text(song.title, fontFamily = Marker, fontSize = 30.sp, color = Tape.PaperInk, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(song.artist, fontFamily = Marker, fontSize = 24.sp, color = Tape.PaperInk.copy(alpha = 0.75f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                song.title,
+                fontFamily = Mix,
+                fontWeight = FontWeight.Bold,
+                fontSize = 20.sp,
+                lineHeight = 26.sp,
+                color = Tape.PaperInk,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                song.artist,
+                fontFamily = Mix,
+                fontWeight = FontWeight.Medium,
+                fontSize = 15.sp,
+                lineHeight = 26.sp,
+                color = Tape.PaperInk.copy(alpha = 0.75f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }
 
 @Composable
-fun ActionRow(icon: Painter, label: String, tint: Color = Tape.Cream, onClick: () -> Unit) {
+fun ActionRow(icon: Painter, label: String, tint: Color = Tape.Fg, onClick: () -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -136,6 +165,6 @@ fun ActionRow(icon: Painter, label: String, tint: Color = Tape.Cream, onClick: (
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(24.dp))
-        Text(label, style = MaterialTheme.typography.bodyLarge, color = Tape.Cream, modifier = Modifier.padding(start = 20.dp))
+        Text(label, style = MaterialTheme.typography.bodyLarge, color = Tape.Fg, modifier = Modifier.padding(start = 20.dp))
     }
 }

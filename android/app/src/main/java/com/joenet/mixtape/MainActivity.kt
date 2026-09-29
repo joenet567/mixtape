@@ -3,7 +3,9 @@ package com.joenet.mixtape
 import android.app.SearchManager
 import android.content.ComponentName
 import android.content.Intent
+import android.content.res.Configuration
 import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
 import android.provider.MediaStore
 import androidx.activity.ComponentActivity
@@ -12,12 +14,16 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.core.content.ContextCompat
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
 import com.joenet.mixtape.ui.MixtapeApp
 import com.joenet.mixtape.ui.MixtapeTheme
+import com.joenet.mixtape.ui.Tape
+import com.joenet.mixtape.ui.ThemeMode
 
 class MainActivity : ComponentActivity() {
 
@@ -29,19 +35,46 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // The app is always dark, so always use light system-bar icons (the default follows the system theme).
-        enableEdgeToEdge(
-            statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
-            navigationBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
-        )
+        // Edge-to-edge with the right icon colours before the first frame; SystemBarsFollowTheme keeps them right after that.
+        applySystemBars(isDark(vm.themeMode))
         setContent {
-            MixtapeTheme {
+            MixtapeTheme(vm.themeMode) {
+                SystemBarsFollowTheme()
                 MixtapeApp(vm, onRequestPermission = ::requestAudioPermission)
             }
         }
         if (savedInstanceState == null) {
             if (!vm.hasPermission) requestAudioPermission()
             handleIntent(intent)
+        }
+    }
+
+    /** The theme the app will resolve to: System follows the phone's night mode. */
+    private fun isDark(mode: ThemeMode): Boolean = when (mode) {
+        ThemeMode.Light -> false
+        ThemeMode.Dark -> true
+        ThemeMode.System ->
+            (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+    }
+
+    /**
+     * Transparent system bars with light icons on a dark theme and dark icons on a light one, and a window
+     * background that matches the theme (it shows behind the app while it resizes, and after a rotation).
+     * SystemBarStyle.dark/light rather than .auto: they also switch off the extra nav-bar scrim on API 29.
+     */
+    private fun applySystemBars(dark: Boolean) {
+        val bars = if (dark) SystemBarStyle.dark(Color.TRANSPARENT) else SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
+        enableEdgeToEdge(statusBarStyle = bars, navigationBarStyle = bars)
+        window.setBackgroundDrawable(ColorDrawable(if (dark) DARK_WINDOW else LIGHT_WINDOW))
+    }
+
+    /** Re-applies the bars whenever the resolved theme flips (Settings, the header toggle, or the phone's night mode). */
+    @Composable
+    private fun SystemBarsFollowTheme() {
+        val dark = Tape.isDark
+        DisposableEffect(dark) {
+            applySystemBars(dark)
+            onDispose {}
         }
     }
 
@@ -108,5 +141,9 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_OPEN_PLAYER = "open_player"
+
+        // Tape.Bg in each theme, used as the window background
+        private val DARK_WINDOW = 0xFF14110E.toInt()
+        private val LIGHT_WINDOW = 0xFFF7F1E7.toInt()
     }
 }

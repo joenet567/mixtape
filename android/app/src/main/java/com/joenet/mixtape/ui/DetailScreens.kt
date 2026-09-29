@@ -6,18 +6,19 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Close
@@ -45,6 +46,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.style.TextOverflow
@@ -61,9 +63,15 @@ import sh.calvin.reorderable.rememberReorderableLazyListState
 
 @Composable
 fun BackRow(vm: MainViewModel, actions: @Composable () -> Unit = {}) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = { vm.back() }, modifier = Modifier.offset(x = 4.dp)) {
-            Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back", tint = Tape.Cream)
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // glass back button; TalkBack reads "Back" from the button itself
+        GlassIconButton(onClick = { vm.back() }, contentDescription = "Back") {
+            Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = null)
         }
         Spacer(Modifier.weight(1f))
         actions()
@@ -97,14 +105,14 @@ fun TapeScreen(vm: MainViewModel, ref: TapeRef) {
         Column(Modifier.fillMaxSize()) {
             BackRow(vm)
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("This tape isn't on the phone any more.", color = Tape.Dust)
+                Text("This tape isn't on the phone any more.", color = Tape.FgMuted)
             }
         }
         return
     }
     val songs = hit.songs
     val ctx = vm.ctxFor(hit)
-    LazyColumn(Modifier.fillMaxSize()) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 16.dp + LocalChromeInset.current)) {
         item(key = "header") {
             TapeHeader(vm, hit, meta = "${songCount(songs.size)}, ${formatLong(songs.sumOf { it.durationMs })}")
         }
@@ -112,7 +120,7 @@ fun TapeScreen(vm: MainViewModel, ref: TapeRef) {
             item(key = "empty") {
                 Text(
                     "Songs you like end up here. Tap the heart on the player, or long-press any song and choose Like.",
-                    color = Tape.Dust,
+                    color = Tape.FgMuted,
                     modifier = Modifier.padding(20.dp),
                 )
             }
@@ -130,23 +138,23 @@ fun TapeScreen(vm: MainViewModel, ref: TapeRef) {
 }
 
 @Composable
-private fun TapeHeader(vm: MainViewModel, hit: TapeHit, meta: String, footRight: String? = null, actions: @Composable () -> Unit = {}) {
+private fun TapeHeader(vm: MainViewModel, hit: TapeHit, meta: String, actions: @Composable () -> Unit = {}) {
     val songs = hit.songs
     val ctx = vm.ctxFor(hit)
     Column(Modifier.fillMaxWidth()) {
         BackRow(vm, actions)
         Column(Modifier.padding(horizontal = 16.dp)) {
-            TapeCassette(
+            // cover-first: a big centred cover with the small live cassette badge in its corner
+            TapeCover(
                 vm, hit,
                 Modifier
-                    .fillMaxWidth(0.84f)
+                    .fillMaxWidth(0.66f)
                     .align(Alignment.CenterHorizontally),
-                footLeft = "SIDE A",
-                footRight = footRight ?: songCount(songs.size).uppercase(),
+                px = 768,
             )
             Spacer(Modifier.height(20.dp))
-            Text(hit.name, style = MaterialTheme.typography.headlineSmall, color = Tape.Cream)
-            Text(meta, style = MaterialTheme.typography.bodyMedium, color = Tape.Dust)
+            Text(hit.name, style = MaterialTheme.typography.headlineSmall, color = Tape.Fg)
+            Text(meta, style = MaterialTheme.typography.bodyMedium, color = Tape.FgMuted)
             Spacer(Modifier.height(14.dp))
             if (songs.isNotEmpty()) {
                 PlayShuffleButtons(
@@ -193,6 +201,9 @@ private fun UserTapeScreen(vm: MainViewModel, id: Long) {
         if (tape.twoSided) append(", C-${tape.length}")
     }
 
+    val chromeInset = LocalChromeInset.current
+    val menuShape = RoundedCornerShape(16.dp)
+    val dialogShape = RoundedCornerShape(28.dp)
     val listState = rememberLazyListState()
     val reorder = rememberReorderableLazyListState(listState) { from, to ->
         val a = tracks.indexOfFirst { trackKey(it) == from.key }
@@ -209,15 +220,21 @@ private fun UserTapeScreen(vm: MainViewModel, id: Long) {
 
     LazyColumn(Modifier.fillMaxSize(), state = listState) {
         item(key = "header") {
-            TapeHeader(vm, hit, meta, footRight = if (tape.twoSided) "C-${tape.length}" else null) {
+            TapeHeader(vm, hit, meta) {
                 if (tracks.isNotEmpty()) {
-                    TextButton(onClick = { editing = !editing }) { Text(if (editing) "Done" else "Edit", color = Tape.Cream) }
+                    TextButton(onClick = { editing = !editing }) { Text(if (editing) "Done" else "Edit", color = Tape.Fg) }
                 }
                 Box {
                     IconButton(onClick = { menu = true }) {
-                        Icon(Icons.Rounded.MoreVert, contentDescription = "Tape options", tint = Tape.Cream)
+                        Icon(Icons.Rounded.MoreVert, contentDescription = "Tape options", tint = Tape.Fg)
                     }
-                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, containerColor = Tape.DeckHigh) {
+                    DropdownMenu(
+                        expanded = menu,
+                        onDismissRequest = { menu = false },
+                        modifier = Modifier.glassRim(menuShape),
+                        shape = menuShape,
+                        containerColor = glassContainerColor(),
+                    ) {
                         DropdownMenuItem(text = { Text("Rename or recolour") }, onClick = { menu = false; renaming = true })
                         DropdownMenuItem(
                             text = { Text(if (tape.twoSided) "Make it one-sided" else "Split into Side A and B") },
@@ -240,7 +257,7 @@ private fun UserTapeScreen(vm: MainViewModel, id: Long) {
                             menu = false
                             share.launch("${tape.name}.m3u8")
                         })
-                        DropdownMenuItem(text = { Text("Erase tape", color = Tape.Brick) }, onClick = { menu = false; erasing = true })
+                        DropdownMenuItem(text = { Text("Erase tape", color = MaterialTheme.colorScheme.error) }, onClick = { menu = false; erasing = true })
                     }
                 }
             }
@@ -249,7 +266,7 @@ private fun UserTapeScreen(vm: MainViewModel, id: Long) {
             item(key = "empty") {
                 Text(
                     "A blank tape. Long-press any song, anywhere, and choose Add to tape.",
-                    color = Tape.Dust,
+                    color = Tape.FgMuted,
                     modifier = Modifier.padding(20.dp),
                 )
             }
@@ -269,7 +286,7 @@ private fun UserTapeScreen(vm: MainViewModel, id: Long) {
                     val song = vm.songFor(track.key)
                     ReorderableItem(reorder, key = trackKey(track), enabled = editing) { dragging ->
                         val lift by animateDpAsState(if (dragging) 6.dp else 0.dp, label = "lift")
-                        Surface(color = Tape.Ink, shadowElevation = lift) {
+                        Surface(color = Tape.Bg, shadowElevation = lift) {
                             if (song == null) {
                                 MissingTrackRow(track, editing) { tracks = tracks - track; vm.setTapeTracks(id, tracks) }
                             } else {
@@ -286,19 +303,19 @@ private fun UserTapeScreen(vm: MainViewModel, id: Long) {
                                                 IconButton(onClick = {
                                                     tracks = tracks.map { if (it === track) it.copy(side = 1 - it.side) else it }
                                                     vm.setTapeTracks(id, tracks)
-                                                }) { Icon(Icons.Rounded.SwapVert, contentDescription = "Move to side ${if (track.side == 0) "B" else "A"}", tint = Tape.Dust) }
+                                                }) { Icon(Icons.Rounded.SwapVert, contentDescription = "Move to side ${if (track.side == 0) "B" else "A"}", tint = Tape.FgMuted) }
                                             }
                                             IconButton(onClick = {
                                                 tracks = tracks - track
                                                 vm.setTapeTracks(id, tracks)
-                                            }) { Icon(Icons.Rounded.Close, contentDescription = "Remove from tape", tint = Tape.Dust) }
+                                            }) { Icon(Icons.Rounded.Close, contentDescription = "Remove from tape", tint = Tape.FgMuted) }
                                             IconButton(
                                                 onClick = {},
                                                 modifier = Modifier.draggableHandle(
                                                     onDragStarted = { haptics.performHapticFeedback(HapticFeedbackType.LongPress) },
                                                     onDragStopped = { vm.setTapeTracks(id, tracks) },
                                                 ),
-                                            ) { Icon(Icons.Rounded.DragHandle, contentDescription = "Reorder", tint = Tape.Dust) }
+                                            ) { Icon(Icons.Rounded.DragHandle, contentDescription = "Reorder", tint = Tape.FgMuted) }
                                         }
                                     }),
                                 ) {
@@ -310,7 +327,7 @@ private fun UserTapeScreen(vm: MainViewModel, id: Long) {
                 }
             }
         }
-        item(key = "end") { Spacer(Modifier.height(24.dp)) }
+        item(key = "end") { Spacer(Modifier.height(24.dp + chromeInset)) }
     }
 
     if (renaming) {
@@ -329,16 +346,21 @@ private fun UserTapeScreen(vm: MainViewModel, id: Long) {
     if (erasing) {
         AlertDialog(
             onDismissRequest = { erasing = false },
-            containerColor = Tape.Deck,
+            modifier = Modifier.glassRim(dialogShape),
+            shape = dialogShape,
+            containerColor = glassContainerColor(),
             title = { Text("Erase “${tape.name}”?") },
-            text = { Text("The tape goes; the songs stay in your library.", color = Tape.Dust) },
-            confirmButton = { TextButton(onClick = { erasing = false; vm.deleteTape(id) }) { Text("Erase", color = Tape.Brick) } },
-            dismissButton = { TextButton(onClick = { erasing = false }) { Text("Keep it", color = Tape.Dust) } },
+            text = { Text("The tape goes; the songs stay in your library.", color = Tape.FgMuted) },
+            confirmButton = { TextButton(onClick = { erasing = false; vm.deleteTape(id) }) { Text("Erase", color = MaterialTheme.colorScheme.error) } },
+            dismissButton = { TextButton(onClick = { erasing = false }) { Text("Keep it", color = Tape.FgMuted) } },
         )
     }
 }
 
 private fun trackKey(t: TapeTrack) = "t:${t.tapeId}:${t.key}:${t.position}"
+
+/** The "side runs long" warning colour: mustard is unreadable on the light paper, so it darkens to amber there. */
+private fun overLimitColor(): Color = if (Tape.isDark) Tape.Mustard else Color(0xFF7A5000)
 
 @Composable
 private fun SideHeader(label: String, lengthMs: Long, over: Boolean, limitMin: Int) {
@@ -348,12 +370,12 @@ private fun SideHeader(label: String, lengthMs: Long, over: Boolean, limitMin: I
             .padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(label, style = Legend, color = Tape.Cream)
+        Text(label, style = Legend, color = Tape.Fg)
         Spacer(Modifier.weight(1f))
         Text(
             if (over) "${formatLong(lengthMs)}, over the $limitMin min a side fits" else formatLong(lengthMs),
             style = MaterialTheme.typography.bodySmall,
-            color = if (over) Tape.Mustard else Tape.Dust,
+            color = if (over) overLimitColor() else Tape.FgMuted,
         )
     }
 }
@@ -367,11 +389,11 @@ private fun MissingTrackRow(track: TapeTrack, editing: Boolean, onRemove: () -> 
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
-            Text(track.title, color = Tape.Dust, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text("Not on the phone. Sync it from your PC", style = MaterialTheme.typography.bodySmall, color = Tape.Dust)
+            Text(track.title, color = Tape.FgMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text("Not on the phone. Sync it from your PC", style = MaterialTheme.typography.bodySmall, color = Tape.FgMuted)
         }
         if (editing) {
-            IconButton(onClick = onRemove) { Icon(Icons.Rounded.Close, contentDescription = "Remove from tape", tint = Tape.Dust) }
+            IconButton(onClick = onRemove) { Icon(Icons.Rounded.Close, contentDescription = "Remove from tape", tint = Tape.FgMuted) }
         }
     }
 }
@@ -381,7 +403,7 @@ fun ArtistScreen(vm: MainViewModel, name: String) {
     val songs = vm.library.artist(name)
     val tapes = vm.libraryTapes().filter { t -> t.ref is TapeRef.Folder && t.songs.any { name in it.artists } }
     val ctx = PlayCtx.artist(name)
-    LazyColumn(Modifier.fillMaxSize()) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 16.dp + LocalChromeInset.current)) {
         item(key = "header") {
             Column(Modifier.fillMaxWidth()) {
                 BackRow(vm)
@@ -393,8 +415,8 @@ fun ArtistScreen(vm: MainViewModel, name: String) {
                 ) {
                     ArtistAvatar(name, 120.dp)
                     Spacer(Modifier.height(14.dp))
-                    Text(name, style = MaterialTheme.typography.headlineMedium, color = Tape.Cream)
-                    Text(songCount(songs.size), style = MaterialTheme.typography.bodyMedium, color = Tape.Dust)
+                    Text(name, style = MaterialTheme.typography.headlineMedium, color = Tape.Fg)
+                    Text(songCount(songs.size), style = MaterialTheme.typography.bodyMedium, color = Tape.FgMuted)
                     Spacer(Modifier.height(14.dp))
                     if (songs.isNotEmpty()) {
                         PlayShuffleButtons(

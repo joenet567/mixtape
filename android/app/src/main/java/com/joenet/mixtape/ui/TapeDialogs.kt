@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -49,6 +48,7 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -58,7 +58,7 @@ import com.joenet.mixtape.songCount
 
 private val colorNames = listOf("Orange", "Mustard", "Teal", "Brick", "Sage", "Sky")
 
-/** Name a tape by writing on its label, and pick the label colour. Used for new tapes and renames. */
+/** Name a tape (typed onto its paper label) and pick the label colour. Used for new tapes and renames. */
 @Composable
 fun TapeEditorDialog(
     title: String,
@@ -71,17 +71,20 @@ fun TapeEditorDialog(
     var name by rememberSaveable { mutableStateOf(initialName) }
     var color by rememberSaveable { mutableIntStateOf(initialColor) }
     val focus = remember { FocusRequester() }
+    val dialogShape = RoundedCornerShape(28.dp)
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = Tape.Deck,
-        title = { Text(title, color = Tape.Cream) },
+        modifier = Modifier.glassRim(dialogShape),
+        shape = dialogShape,
+        containerColor = glassContainerColor(),
+        title = { Text(title, color = Tape.Fg) },
         confirmButton = {
             TextButton(onClick = { onConfirm(name.trim(), color) }, enabled = name.isNotBlank()) { Text(confirm) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel", color = Tape.Dust) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel", color = Tape.FgMuted) } },
         text = {
             Column {
-                // the label: paper with a coloured band, written on in biro
+                // the label: paper with a coloured band (fixed colours, like the physical tape)
                 Column(
                     Modifier
                         .fillMaxWidth()
@@ -92,12 +95,12 @@ fun TapeEditorDialog(
                         value = name,
                         onValueChange = { name = it.take(60) },
                         singleLine = true,
-                        textStyle = TextStyle(fontFamily = Marker, fontSize = 34.sp, color = Tape.PaperInk),
+                        textStyle = TextStyle(fontFamily = Mix, fontWeight = FontWeight.Bold, fontSize = 24.sp, color = Tape.PaperInk),
                         cursorBrush = SolidColor(Tape.PaperInk),
                         decorationBox = { inner ->
                             Box(Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) {
                                 if (name.isEmpty()) {
-                                    Text("Name your tape", fontFamily = Marker, fontSize = 34.sp, color = Tape.PaperInk.copy(alpha = 0.35f))
+                                    Text("Name your tape", fontFamily = Mix, fontWeight = FontWeight.Bold, fontSize = 24.sp, color = Tape.PaperInk.copy(alpha = 0.35f))
                                 }
                                 inner()
                             }
@@ -123,7 +126,7 @@ fun TapeEditorDialog(
                                 .size(36.dp)
                                 .clip(CircleShape)
                                 .background(c)
-                                .then(if (i == color) Modifier.border(3.dp, Tape.Cream, CircleShape) else Modifier)
+                                .then(if (i == color) Modifier.border(3.dp, Tape.Fg, CircleShape) else Modifier)
                                 .clickable { color = i }
                                 .semantics {
                                     role = Role.RadioButton
@@ -145,12 +148,20 @@ fun TapeEditorDialog(
 fun AddToTapeSheet(vm: MainViewModel, songs: List<Song>, onDismiss: () -> Unit) {
     var creating by remember { mutableStateOf(false) }
     val state = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = state, containerColor = Tape.Deck) {
-        Column(Modifier.navigationBarsPadding()) {
+    // The rim and the drag handle are drawn inside the sheet by GlassSheetBody (which also applies the navigation-bar
+    // padding): a rim passed through ModalBottomSheet's modifier would be drawn at the un-offset position, not on the sheet.
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = state,
+        shape = GlassSheetShape,
+        containerColor = glassContainerColor(),
+        dragHandle = null,
+    ) {
+        GlassSheetBody {
             Text(
                 if (songs.size == 1) "Add “${songs.first().title}” to a tape" else "Add ${songCount(songs.size)} to a tape",
                 style = MaterialTheme.typography.titleLarge,
-                color = Tape.Cream,
+                color = Tape.Fg,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
@@ -166,12 +177,12 @@ fun AddToTapeSheet(vm: MainViewModel, songs: List<Song>, onDismiss: () -> Unit) 
                     ) {
                         Box(
                             Modifier
-                                .size(width = 56.dp, height = 36.dp)
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(Tape.DeckHigh),
+                                .size(56.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Tape.SurfaceHigh),
                             contentAlignment = Alignment.Center,
-                        ) { Icon(Icons.Rounded.Add, contentDescription = null, tint = Tape.Cream) }
-                        Text("Record a new tape", color = Tape.Cream, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(start = 16.dp))
+                        ) { Icon(Icons.Rounded.Add, contentDescription = null, tint = Tape.Fg) }
+                        Text("Record a new tape", color = Tape.Fg, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(start = 16.dp))
                     }
                 }
                 items(vm.userTapes, key = { it.tape.id }) { t ->
@@ -186,10 +197,11 @@ fun AddToTapeSheet(vm: MainViewModel, songs: List<Song>, onDismiss: () -> Unit) 
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         val hit = vm.userTapeHit(t)
-                        Box(Modifier.width(56.dp)) { TapeCassette(vm, hit, Modifier.fillMaxWidth()) }
+                        // cover preview with a bigger cassette badge, so the tape's colour still reads at 56.dp
+                        TapeCover(vm, hit, Modifier.width(56.dp), tapeFraction = 0.5f, px = 192, corner = 8.dp)
                         Column(Modifier.padding(start = 16.dp)) {
-                            Text(t.tape.name, color = Tape.Cream, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(songCount(t.tracks.size), color = Tape.Dust, style = MaterialTheme.typography.bodyMedium)
+                            Text(t.tape.name, color = Tape.Fg, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(songCount(t.tracks.size), color = Tape.FgMuted, style = MaterialTheme.typography.bodyMedium)
                         }
                     }
                 }

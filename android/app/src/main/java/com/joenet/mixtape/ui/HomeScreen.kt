@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -25,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -41,16 +43,17 @@ import com.joenet.mixtape.songCount
 fun HomeScreen(vm: MainViewModel) {
     val songs = vm.songs
     val home = vm.home
+    val chromeInset = LocalChromeInset.current
     LazyColumn(Modifier.fillMaxSize()) {
         item(key = "brand") {
             Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 4.dp)) {
-                Text("MIXTAPE", style = MaterialTheme.typography.displaySmall, color = Tape.Cream)
+                Text("MIXTAPE", style = MaterialTheme.typography.displaySmall, color = Tape.Fg)
                 if (songs.isNotEmpty()) {
                     val tapes = vm.library.tapes.size + vm.userTapes.size
                     Text(
                         "${songCount(songs.size)}, $tapes ${if (tapes == 1) "tape" else "tapes"}, ${formatLong(songs.sumOf { it.durationMs })}",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = Tape.Dust,
+                        color = Tape.FgMuted,
                     )
                 }
             }
@@ -58,7 +61,7 @@ fun HomeScreen(vm: MainViewModel) {
         when {
             !vm.loaded -> item(key = "loading") {
                 Box(Modifier.fillMaxWidth().height(240.dp), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = Tape.Cream)
+                    CircularProgressIndicator(color = Tape.Fg)
                 }
             }
             songs.isEmpty() -> item(key = "empty") {
@@ -81,7 +84,7 @@ fun HomeScreen(vm: MainViewModel) {
                                 Text(
                                     "${songCount(home.newSongs.size)} from your last sync",
                                     style = MaterialTheme.typography.bodyMedium,
-                                    color = Tape.Dust,
+                                    color = Tape.FgMuted,
                                     modifier = Modifier.padding(start = 16.dp, bottom = 8.dp),
                                 )
                             }
@@ -116,19 +119,22 @@ fun HomeScreen(vm: MainViewModel) {
                                     .clickable(onClickLabel = "Open your ${r.monthLabel} Rewind") { vm.open(Route.Rewind) }
                                     .padding(4.dp)
                             ) {
-                                Cassette(
-                                    label = "Rewind: ${r.monthLabel}",
-                                    labelColor = Tape.Sky,
-                                    modifier = Modifier.width(220.dp),
+                                CoverWithTape(
                                     art = r.topSongs.firstOrNull()?.first?.uri,
-                                    footLeft = "SIDE A",
-                                    footRight = playsLegend(r.plays),
+                                    labelColor = Tape.Sky,
+                                    seed = "Rewind",
+                                    modifier = Modifier.width(220.dp),
+                                )
+                                Text(
+                                    "Rewind: ${r.monthLabel}",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = Tape.Fg,
+                                    modifier = Modifier.padding(top = 8.dp),
                                 )
                                 Text(
                                     "${formatLong(r.listenedMs)} of music this month",
                                     style = MaterialTheme.typography.bodyMedium,
-                                    color = Tape.Dust,
-                                    modifier = Modifier.padding(top = 6.dp),
+                                    color = Tape.FgMuted,
                                 )
                             }
                         }
@@ -140,7 +146,7 @@ fun HomeScreen(vm: MainViewModel) {
                         ShuffleAllTape(vm)
                     }
                 }
-                item(key = "end") { Spacer(Modifier.height(24.dp)) }
+                item(key = "end") { Spacer(Modifier.height(24.dp + chromeInset)) }
             }
         }
     }
@@ -166,21 +172,27 @@ private fun ResumeTile(vm: MainViewModel, card: ResumeCard) {
             .padding(4.dp)
     ) {
         when (val t = card.target) {
-            is CtxTarget.OfArtist -> Box(Modifier.fillMaxWidth().height(101.dp), contentAlignment = Alignment.Center) {
-                ArtistAvatar(t.name, 96.dp)
+            // square like a cover, so artist and tape tiles line up on the shelf
+            is CtxTarget.OfArtist -> Box(Modifier.fillMaxWidth().aspectRatio(1f), contentAlignment = Alignment.Center) {
+                ArtistAvatar(t.name, 120.dp)
             }
             else -> {
                 val hit = card.tape
                 if (hit != null) {
-                    TapeCassette(vm, hit, Modifier.fillMaxWidth())
+                    TapeCover(vm, hit, Modifier.fillMaxWidth())
                 } else {
-                    Cassette(card.name, Tape.Mustard, Modifier.fillMaxWidth(), art = card.songs.firstOrNull()?.uri)
+                    CoverWithTape(
+                        art = card.songs.firstOrNull()?.uri,
+                        labelColor = Tape.Mustard,
+                        seed = card.name,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
                 }
             }
         }
-        Text(card.name, style = MaterialTheme.typography.bodyMedium, color = Tape.Cream, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp))
+        Text(card.name, style = MaterialTheme.typography.titleSmall, color = Tape.Fg, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp))
         if (song != null) {
-            Text(song.title, style = MaterialTheme.typography.bodySmall, color = Tape.Dust, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(song.title, style = MaterialTheme.typography.bodySmall, color = Tape.FgMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -198,19 +210,22 @@ private fun ShuffleAllTape(vm: MainViewModel) {
             .padding(4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Cassette(
-            label = "Shuffle all",
-            labelColor = Tape.Mustard,
-            modifier = Modifier.fillMaxWidth(0.78f),
+        CoverWithTape(
             art = songs.firstOrNull()?.uri,
-            footLeft = "C-90",
-            footRight = songCount(songs.size).uppercase(),
+            labelColor = Tape.Mustard,
+            seed = "Shuffle all",
+            modifier = Modifier.fillMaxWidth(0.6f),
         )
         Text(
             "Everything, shuffled",
-            style = MaterialTheme.typography.bodyMedium,
-            color = Tape.Dust,
+            style = MaterialTheme.typography.titleSmall,
+            color = Tape.Fg,
             modifier = Modifier.padding(top = 8.dp),
+        )
+        Text(
+            "${songCount(songs.size)}, ${formatLong(songs.sumOf { it.durationMs })}",
+            style = MaterialTheme.typography.bodySmall,
+            color = Tape.FgMuted,
         )
     }
 }
@@ -234,46 +249,45 @@ fun SongCard(vm: MainViewModel, song: Song, onClick: () -> Unit) {
         Text(
             song.title,
             style = MaterialTheme.typography.bodyMedium,
-            color = if (song.mediaId == vm.player.mediaId) Tape.Orange else Tape.Cream,
+            color = if (song.mediaId == vm.player.mediaId) Tape.Accent else Tape.Fg,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(top = 6.dp),
         )
-        Text(song.artist, style = MaterialTheme.typography.bodySmall, color = Tape.Dust, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(song.artist, style = MaterialTheme.typography.bodySmall, color = Tape.FgMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
 private fun playCount(n: Int) = if (n == 1) "1 play" else "$n plays"
-private fun playsLegend(n: Int) = playCount(n).uppercase()
 
 /** This month on the deck: time listened, top songs and top artists, and a tape of the top songs. */
 @Composable
 fun RewindScreen(vm: MainViewModel) {
     val r = vm.home.rewind
+    val chromeInset = LocalChromeInset.current
     LazyColumn(Modifier.fillMaxSize()) {
         item(key = "header") {
             Column {
                 BackRow(vm)
                 if (r == null) {
-                    Text("Play some music this month and your Rewind shows up here.", color = Tape.Dust, modifier = Modifier.padding(20.dp))
+                    Text("Play some music this month and your Rewind shows up here.", color = Tape.FgMuted, modifier = Modifier.padding(20.dp))
                     return@Column
                 }
                 Column(Modifier.padding(horizontal = 16.dp)) {
-                    Cassette(
-                        label = "Rewind: ${r.monthLabel}",
-                        labelColor = Tape.Sky,
-                        modifier = Modifier
-                            .fillMaxWidth(0.84f)
-                            .align(Alignment.CenterHorizontally),
+                    CoverWithTape(
                         art = r.topSongs.firstOrNull()?.first?.uri,
-                        footLeft = "SIDE A",
-                        footRight = playsLegend(r.plays),
+                        labelColor = Tape.Sky,
+                        seed = "Rewind",
+                        modifier = Modifier
+                            .fillMaxWidth(0.66f)
+                            .align(Alignment.CenterHorizontally),
+                        px = 768,
                     )
                     Spacer(Modifier.height(20.dp))
-                    Text("Your ${r.monthLabel}", style = MaterialTheme.typography.headlineMedium, color = Tape.Cream)
+                    Text("Your ${r.monthLabel}", style = MaterialTheme.typography.headlineMedium, color = Tape.Fg)
                     Row(verticalAlignment = Alignment.Bottom) {
-                        Text(formatLong(r.listenedMs), fontFamily = Barlow, fontSize = 44.sp, color = Tape.Cream)
-                        Text(" listened, ${playCount(r.plays)}", style = MaterialTheme.typography.bodyLarge, color = Tape.Dust, modifier = Modifier.padding(bottom = 8.dp))
+                        Text(formatLong(r.listenedMs), fontFamily = Mix, fontWeight = FontWeight.Bold, fontSize = 44.sp, color = Tape.Fg)
+                        Text(" listened, ${playCount(r.plays)}", style = MaterialTheme.typography.bodyLarge, color = Tape.FgMuted, modifier = Modifier.padding(bottom = 8.dp))
                     }
                     Spacer(Modifier.height(12.dp))
                     if (r.topSongs.isNotEmpty()) {
@@ -294,7 +308,7 @@ fun RewindScreen(vm: MainViewModel) {
                     playing = vm.player.isPlaying,
                     number = i + 1,
                     onLongClick = { vm.actionsFor = song },
-                    trailing = { Text(playCount(plays), style = MaterialTheme.typography.bodySmall, color = Tape.Dust) },
+                    trailing = { Text(playCount(plays), style = MaterialTheme.typography.bodySmall, color = Tape.FgMuted) },
                 ) { vm.player.play(r.topSongs.map { it.first }, i, PlayCtx.oneOff("Rewind: ${r.monthLabel}")) }
             }
             if (r.topArtists.isNotEmpty()) {
@@ -307,14 +321,14 @@ fun RewindScreen(vm: MainViewModel) {
                             .padding(horizontal = 16.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text("%02d".format(i + 1), fontFamily = Mono, color = Tape.Dust, modifier = Modifier.width(32.dp))
+                        Text("%02d".format(i + 1), fontFamily = Mono, color = Tape.FgMuted, modifier = Modifier.width(32.dp))
                         ArtistAvatar(artist, 44.dp)
-                        Text(artist, color = Tape.Cream, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(start = 14.dp))
-                        Text(playCount(plays), style = MaterialTheme.typography.bodySmall, color = Tape.Dust)
+                        Text(artist, color = Tape.Fg, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(start = 14.dp))
+                        Text(playCount(plays), style = MaterialTheme.typography.bodySmall, color = Tape.FgMuted)
                     }
                 }
             }
-            item(key = "end") { Spacer(Modifier.height(24.dp)) }
+            item(key = "end") { Spacer(Modifier.height(24.dp + chromeInset)) }
         }
     }
 }

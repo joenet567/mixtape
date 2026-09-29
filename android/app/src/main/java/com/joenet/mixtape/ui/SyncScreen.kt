@@ -1,5 +1,6 @@
 package com.joenet.mixtape.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -26,7 +28,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -37,6 +38,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.input.ImeAction
@@ -72,18 +74,20 @@ fun SyncScreen(vm: MainViewModel) {
     }
 
     // The app shell already handles the status and navigation bars.
-    Scaffold(containerColor = Tape.Ink, contentWindowInsets = WindowInsets(0, 0, 0, 0)) { pad ->
+    Scaffold(containerColor = Tape.Bg, contentWindowInsets = WindowInsets(0, 0, 0, 0)) { pad ->
         Column(
             Modifier
                 .padding(pad)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp),
+                .padding(horizontal = 20.dp)
+                // The last row scrolls clear of the floating nav bar and mini player.
+                .padding(bottom = LocalChromeInset.current),
         ) {
             IconButton(onClick = { vm.back() }, modifier = Modifier.offset(x = (-12).dp)) {
-                Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back", tint = Tape.Cream)
+                Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back", tint = Tape.Fg)
             }
-            Text("Sync from PC", style = MaterialTheme.typography.headlineMedium, color = Tape.Cream)
-            Text("Get new songs from your PC over Wi-Fi", style = MaterialTheme.typography.bodyMedium, color = Tape.Dust)
+            Text("Sync from PC", style = MaterialTheme.typography.headlineMedium, color = Tape.Fg)
+            Text("Get new songs from your PC over Wi-Fi", style = MaterialTheme.typography.bodyMedium, color = Tape.FgMuted)
             Spacer(Modifier.height(20.dp))
             Cassette(
                 label = "From my PC",
@@ -100,7 +104,7 @@ fun SyncScreen(vm: MainViewModel) {
             Text(
                 "● REC",
                 style = Legend,
-                color = if (working != null) Tape.Orange else Tape.Line,
+                color = if (working != null) Tape.Accent else Tape.Hairline,
                 modifier = Modifier
                     .align(Alignment.CenterHorizontally)
                     .padding(top = 8.dp),
@@ -119,11 +123,13 @@ fun SyncScreen(vm: MainViewModel) {
                 enabled = !busy,
                 textStyle = MaterialTheme.typography.bodyLarge.copy(fontFamily = Mono),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Done),
+                shape = RoundedCornerShape(16.dp),
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = Tape.Cream,
-                    unfocusedBorderColor = Tape.Line,
-                    focusedLabelColor = Tape.Cream,
-                    cursorColor = Tape.Cream,
+                    focusedBorderColor = Tape.Fg,
+                    // the scheme's outline: Hairline in dark, a darker line in light where Hairline is too faint
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                    focusedLabelColor = Tape.Fg,
+                    cursorColor = Tape.Fg,
                 ),
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -144,7 +150,7 @@ fun SyncScreen(vm: MainViewModel) {
                     "and nothing on the phone is ever deleted. After the first sync, new songs also " +
                     "arrive by themselves while the phone charges on Wi-Fi (Settings > Sync automatically).",
                 style = MaterialTheme.typography.bodySmall,
-                color = Tape.Dust,
+                color = Tape.FgMuted,
             )
             Spacer(Modifier.height(24.dp))
         }
@@ -154,8 +160,8 @@ fun SyncScreen(vm: MainViewModel) {
 @Composable
 private fun Step(number: String, text: String) {
     Row(Modifier.padding(vertical = 5.dp), verticalAlignment = Alignment.Top) {
-        Text(number, fontFamily = Mono, fontSize = 14.sp, color = Tape.Dust, modifier = Modifier.width(26.dp))
-        Text(text, style = MaterialTheme.typography.bodyMedium, color = Tape.Cream)
+        Text(number, fontFamily = Mono, fontSize = 14.sp, color = Tape.FgMuted, modifier = Modifier.width(26.dp))
+        Text(text, style = MaterialTheme.typography.bodyMedium, color = Tape.Fg)
     }
 }
 
@@ -163,66 +169,74 @@ private fun Step(number: String, text: String) {
 private fun StatusCard(state: State) {
     if (state == State.Idle) return
     val isError = state is State.Failed
-    Surface(
-        color = if (isError) MaterialTheme.colorScheme.errorContainer else Tape.Deck,
-        shape = MaterialTheme.shapes.medium,
-        modifier = Modifier.fillMaxWidth(),
+    val shape = RoundedCornerShape(20.dp)
+    // Screens live inside the app's glass source, so in-content glass has no backdrop (tint only).
+    // An error keeps a solid error container so it stays unmistakable in both themes.
+    val panel = if (isError) {
+        Modifier.clip(shape).background(MaterialTheme.colorScheme.errorContainer)
+    } else {
+        Modifier.glass(shape = shape, backdrop = null, strength = GlassStrength.Thin, elevation = 0.dp)
+    }
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .then(panel)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            when (state) {
-                State.Idle -> Unit
-                State.Searching -> Row(verticalAlignment = Alignment.CenterVertically) {
-                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = Tape.Orange)
-                    Spacer(Modifier.width(12.dp))
-                    Text("Looking for your PC…", color = Tape.Cream)
-                }
-                is State.Working -> {
-                    if (state.total > 0) {
-                        Text(
-                            "Copying ${state.done + 1} of ${state.total}",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = Tape.Cream,
-                        )
-                        LinearProgressIndicator(
-                            progress = { ((state.done + state.fileFraction) / state.total).coerceIn(0f, 1f) },
-                            color = Tape.Orange,
-                            trackColor = Tape.Line,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    } else {
-                        LinearProgressIndicator(Modifier.fillMaxWidth(), color = Tape.Orange, trackColor = Tape.Line)
-                    }
-                    Text(state.message, style = MaterialTheme.typography.bodyMedium, color = Tape.Cream, maxLines = 2)
-                    TextButton(onClick = SyncManager::cancel) { Text("Cancel") }
-                }
-                is State.Finished -> {
-                    Text(
-                        when (state.added) {
-                            0 -> "Already up to date"
-                            1 -> "Added 1 new song"
-                            else -> "Added ${state.added} new songs"
-                        },
-                        style = MaterialTheme.typography.titleMedium,
-                        color = Tape.Cream,
-                    )
-                    if (state.alreadyHad > 0) {
-                        Text(
-                            "${songCount(state.alreadyHad)} ${if (state.alreadyHad == 1) "was" else "were"} already on the phone.",
-                            color = Tape.Cream,
-                        )
-                    }
-                    if (state.lyrics > 0) {
-                        Text("Got lyrics for ${songCount(state.lyrics)}.", color = Tape.Cream)
-                    }
-                    if (state.failed.isNotEmpty()) {
-                        Text("${state.failed.size} failed:", color = MaterialTheme.colorScheme.error)
-                        state.failed.take(20).forEach {
-                            Text("• $it", style = MaterialTheme.typography.bodySmall, color = Tape.Dust)
-                        }
-                    }
-                }
-                is State.Failed -> Text(state.message, color = MaterialTheme.colorScheme.onErrorContainer)
+        when (state) {
+            State.Idle -> Unit
+            State.Searching -> Row(verticalAlignment = Alignment.CenterVertically) {
+                CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = Tape.Accent)
+                Spacer(Modifier.width(12.dp))
+                Text("Looking for your PC…", color = Tape.Fg)
             }
+            is State.Working -> {
+                if (state.total > 0) {
+                    Text(
+                        "Copying ${state.done + 1} of ${state.total}",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Tape.Fg,
+                    )
+                    LinearProgressIndicator(
+                        progress = { ((state.done + state.fileFraction) / state.total).coerceIn(0f, 1f) },
+                        color = Tape.Accent,
+                        trackColor = Tape.Hairline,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                } else {
+                    LinearProgressIndicator(Modifier.fillMaxWidth(), color = Tape.Accent, trackColor = Tape.Hairline)
+                }
+                Text(state.message, style = MaterialTheme.typography.bodyMedium, color = Tape.Fg, maxLines = 2)
+                TextButton(onClick = SyncManager::cancel) { Text("Cancel") }
+            }
+            is State.Finished -> {
+                Text(
+                    when (state.added) {
+                        0 -> "Already up to date"
+                        1 -> "Added 1 new song"
+                        else -> "Added ${state.added} new songs"
+                    },
+                    style = MaterialTheme.typography.titleMedium,
+                    color = Tape.Fg,
+                )
+                if (state.alreadyHad > 0) {
+                    Text(
+                        "${songCount(state.alreadyHad)} ${if (state.alreadyHad == 1) "was" else "were"} already on the phone.",
+                        color = Tape.Fg,
+                    )
+                }
+                if (state.lyrics > 0) {
+                    Text("Got lyrics for ${songCount(state.lyrics)}.", color = Tape.Fg)
+                }
+                if (state.failed.isNotEmpty()) {
+                    Text("${state.failed.size} failed:", color = MaterialTheme.colorScheme.error)
+                    state.failed.take(20).forEach {
+                        Text("• $it", style = MaterialTheme.typography.bodySmall, color = Tape.FgMuted)
+                    }
+                }
+            }
+            is State.Failed -> Text(state.message, color = MaterialTheme.colorScheme.onErrorContainer)
         }
     }
 }

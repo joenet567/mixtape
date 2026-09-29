@@ -1,24 +1,20 @@
 package com.joenet.mixtape.ui
 
 import android.view.HapticFeedbackConstants
-import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.FastForward
 import androidx.compose.material.icons.rounded.FastRewind
@@ -38,9 +34,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalView
@@ -54,6 +48,9 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.toggleableState
 import androidx.compose.ui.state.ToggleableState
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.media3.common.Player
@@ -62,27 +59,23 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /*
- * The transport as one bank of joined piano keys, like a tape deck:
+ * The transport as one row of round glass keys:
  *
- *   | ⇄ | ◀◀ |  ▶ ▮▮  | ▶▶ | ⟲ |
- *              ●  <- orange light while playing
+ *   ( ⇄ )  ( ◀◀ )  (  ▶  )  ( ▶▶ )  ( ⟲ )
+ *                    ^ orange ring while playing
  *
- * Play stays pressed down while music plays; shuffle and repeat latch down while on.
- * Tap ◀◀ / ▶▶ to skip, hold them to scrub (cue / review).
+ * The big play key carries the "live" light: an orange ring while music plays. Shuffle and repeat get a
+ * filled disc and a brighter icon while on. Tap ◀◀ / ▶▶ to skip, hold them to scrub (cue / review).
+ * The keys are glass on top of the glass panel that Now Playing puts them on, so they have no blur or
+ * shadow of their own.
  */
 
-private val Steel = Color(0xFFBDB6AB)
-private val SteelDark = Color(0xFF8E877C)
-private val SteelLip = Color(0xFF5F584F)
-private val CreamFace = Color(0xFFEDE3D1)
-private val CreamDark = Color(0xFFD6CAB4)
-private val CreamLip = Color(0xFF9C8F7A)
-private val Bezel = Color(0xFF0D0B09)
-private val LegendInk = Color(0xFF2A231D)
+private val PlayKeySize = 72.dp
+private val SkipKeySize = 56.dp
+private val ToggleKeySize = 48.dp
 
-private val KeyHeight = 64.dp
-private val LipUp = 7.dp
-private val LipDown = 4.dp
+/** Width the five keys are laid out for at full size (they need 280.dp); narrower rows scale every key down so all five always fit. */
+private val FullRowWidth = 300.dp
 
 @Composable
 fun DeckKeys(
@@ -97,15 +90,12 @@ fun DeckKeys(
     onRepeat: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        // The bezel the keys sit in; keys touch each other, separated only by a hairline.
+    BoxWithConstraints(modifier) {
+        val k = (maxWidth / FullRowWidth).coerceIn(0.75f, 1f)
         Row(
-            Modifier
-                .fillMaxWidth()
-                .height(KeyHeight + 6.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(Bezel)
-                .padding(3.dp),
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             ToggleKey(
                 icon = Icons.Rounded.Shuffle,
@@ -113,10 +103,11 @@ fun DeckKeys(
                 on = shuffle,
                 state = if (shuffle) "On" else "Off",
                 onToggle = onShuffle,
+                diameter = ToggleKeySize * k,
             )
-            TransportKey(Icons.Rounded.FastRewind, "Previous", forward = false, onTap = onPrevious, onScrub = onScrub)
-            PlayKey(playing, onPlayPause)
-            TransportKey(Icons.Rounded.FastForward, "Next", forward = true, onTap = onNext, onScrub = onScrub)
+            TransportKey(Icons.Rounded.FastRewind, "Previous", forward = false, onTap = onPrevious, onScrub = onScrub, diameter = SkipKeySize * k)
+            PlayKey(playing, onPlayPause, diameter = PlayKeySize * k)
+            TransportKey(Icons.Rounded.FastForward, "Next", forward = true, onTap = onNext, onScrub = onScrub, diameter = SkipKeySize * k)
             ToggleKey(
                 icon = Icons.Rounded.Repeat,
                 label = "Repeat",
@@ -128,43 +119,26 @@ fun DeckKeys(
                 },
                 stamp = if (repeatMode == Player.REPEAT_MODE_ONE) "1" else null,
                 onToggle = onRepeat,
+                diameter = ToggleKeySize * k,
             )
         }
-        // The play light: under the play key, lit while music plays.
-        Row(Modifier.fillMaxWidth().padding(top = 8.dp)) {
-            Box(Modifier.weight(2f))
-            Box(Modifier.weight(1.6f), contentAlignment = Alignment.Center) { PlayLight(playing) }
-            Box(Modifier.weight(2f))
-        }
     }
 }
 
 @Composable
-private fun PlayLight(on: Boolean) {
-    Canvas(Modifier.size(width = 22.dp, height = 8.dp)) {
-        val c = Offset(size.width / 2, size.height / 2)
-        if (on) {
-            drawCircle(Brush.radialGradient(listOf(Tape.Orange.copy(alpha = 0.55f), Color.Transparent), c, size.width / 2), size.width / 2, c)
-            drawCircle(Tape.Orange, 3.dp.toPx(), c)
-        } else {
-            drawCircle(Color(0xFF3A2A20), 3.dp.toPx(), c)
-        }
-    }
-}
-
-@Composable
-private fun RowScope.ToggleKey(
+private fun ToggleKey(
     icon: ImageVector,
     label: String,
     on: Boolean,
     state: String,
     onToggle: () -> Unit,
+    diameter: Dp,
     stamp: String? = null,
 ) {
     val toggle by rememberUpdatedState(onToggle)
-    KeyFace(
-        weight = 1f,
-        cream = false,
+    GlassKey(
+        diameter = diameter,
+        strength = GlassStrength.Thin,
         latched = on,
         onPress = { toggle() },
         semantics = Modifier.clearAndSetSemantics {
@@ -176,12 +150,12 @@ private fun RowScope.ToggleKey(
         },
     ) {
         Box(contentAlignment = Alignment.Center) {
-            Icon(icon, contentDescription = null, tint = LegendInk, modifier = Modifier.size(24.dp))
+            Icon(icon, contentDescription = null, tint = if (on) Tape.Fg else Tape.FgMuted, modifier = Modifier.size(diameter * 0.5f))
             if (stamp != null) {
                 Text(
                     stamp,
-                    style = androidx.compose.ui.text.TextStyle(fontFamily = Barlow, fontSize = 11.sp, color = LegendInk),
-                    modifier = Modifier.offset(x = 13.dp, y = (-11).dp),
+                    style = TextStyle(fontFamily = Mix, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Tape.Fg),
+                    modifier = Modifier.offset(x = 11.dp, y = (-10).dp),
                 )
             }
         }
@@ -189,21 +163,22 @@ private fun RowScope.ToggleKey(
 }
 
 @Composable
-private fun RowScope.TransportKey(
+private fun TransportKey(
     icon: ImageVector,
     label: String,
     forward: Boolean,
     onTap: () -> Unit,
     onScrub: (Boolean) -> Unit,
+    diameter: Dp,
 ) {
     val tap by rememberUpdatedState(onTap)
     val scrub by rememberUpdatedState(onScrub)
     val scope = rememberCoroutineScope()
     var holdJob by remember { mutableStateOf<Job?>(null) }
     var scrubbed by remember { mutableStateOf(false) }
-    KeyFace(
-        weight = 1f,
-        cream = false,
+    GlassKey(
+        diameter = diameter,
+        strength = GlassStrength.Regular,
         latched = false,
         onPress = {
             // Hold for cue / review: after a short delay, keep scrubbing until release.
@@ -234,17 +209,19 @@ private fun RowScope.TransportKey(
             )
         },
     ) {
-        Icon(icon, contentDescription = null, tint = LegendInk, modifier = Modifier.size(28.dp))
+        Icon(icon, contentDescription = null, tint = Tape.Fg, modifier = Modifier.size(diameter * 0.5f))
     }
 }
 
 @Composable
-private fun RowScope.PlayKey(playing: Boolean, onPlayPause: () -> Unit) {
+private fun PlayKey(playing: Boolean, onPlayPause: () -> Unit, diameter: Dp) {
     val press by rememberUpdatedState(onPlayPause)
-    KeyFace(
-        weight = 1.6f,
-        cream = true,
-        latched = playing,
+    val still = rememberReduceMotion()
+    val live by animateFloatAsState(if (playing) 1f else 0f, tween(if (still) 0 else 220), label = "playLight")
+    GlassKey(
+        diameter = diameter,
+        strength = GlassStrength.Thick,
+        latched = false,
         onPress = { press() },
         semantics = Modifier.clearAndSetSemantics {
             role = Role.Button
@@ -252,22 +229,37 @@ private fun RowScope.PlayKey(playing: Boolean, onPlayPause: () -> Unit) {
             onClick(label = if (playing) "Pause" else "Play") { press(); true }
         },
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Rounded.PlayArrow, contentDescription = null, tint = LegendInk, modifier = Modifier.size(30.dp))
-            Icon(Icons.Rounded.Pause, contentDescription = null, tint = LegendInk, modifier = Modifier.size(24.dp))
+        // The play light: an orange ring (and a faint orange glow inside it) while music plays.
+        Canvas(Modifier.fillMaxSize()) {
+            val a = live
+            if (a > 0f) {
+                val stroke = 2.5.dp.toPx()
+                drawCircle(Tape.Orange.copy(alpha = 0.12f * a))
+                drawCircle(
+                    Tape.Orange.copy(alpha = a),
+                    radius = (this.size.minDimension - stroke) / 2f,
+                    style = Stroke(stroke),
+                )
+            }
         }
+        Icon(
+            if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+            contentDescription = null,
+            tint = Tape.Fg,
+            modifier = Modifier.size(diameter * 0.5f),
+        )
     }
 }
 
 /**
- * One key: a face that sits on a darker front lip. Pressed (or latched) keys drop ~3dp and the lip
- * shrinks by the same amount, as on a real deck.
- * [onPress] fires on touch-down (tape decks act on the press, not the release).
+ * One round glass key. [onPress] fires on touch-down (tape decks act on the press, not the release); a
+ * [latched] key shows a filled disc. The glass is [Modifier.glass] without a backdrop or shadow, since it
+ * sits on Now Playing's glass panel; `interactive` gives the springy press feedback.
  */
 @Composable
-private fun RowScope.KeyFace(
-    weight: Float,
-    cream: Boolean,
+private fun GlassKey(
+    diameter: Dp,
+    strength: GlassStrength,
     latched: Boolean,
     onPress: () -> Unit,
     semantics: Modifier,
@@ -275,54 +267,32 @@ private fun RowScope.KeyFace(
     legend: @Composable () -> Unit,
 ) {
     val view = LocalView.current
-    var down by remember { mutableStateOf(false) }
-    val pressed = down || latched
-    val still = rememberReduceMotion()
-    val lip by animateDpAsState(if (pressed) LipDown else LipUp, tween(if (still) 0 else 60), label = "lip")
-    val face = if (cream) CreamFace else Steel
-    val faceDark = if (cream) CreamDark else SteelDark
-    val lipColor = if (cream) CreamLip else SteelLip
     val press by rememberUpdatedState(onPress)
     val release by rememberUpdatedState(onRelease)
 
     Box(
         Modifier
-            .weight(weight)
-            .fillMaxHeight()
-            .padding(horizontal = 0.5.dp)
+            .size(diameter)
+            .glass(CircleShape, backdrop = null, strength = strength, elevation = 0.dp, interactive = true)
             .then(semantics)
             .pointerInput(Unit) {
                 detectTapGestures(onPress = {
-                    down = true
                     view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                     press()
                     val completed = tryAwaitRelease()
-                    down = false
                     release(completed)
                 })
             },
+        contentAlignment = Alignment.Center,
     ) {
-        val topGap = LipUp - lip // how far the face has dropped
-        Column(Modifier.fillMaxSize()) {
-            Box(Modifier.height(topGap))
-            // face
+        if (latched) {
             Box(
                 Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .clip(RoundedCornerShape(topStart = 3.dp, topEnd = 3.dp))
-                    .background(Brush.verticalGradient(listOf(face, faceDark))),
-                contentAlignment = Alignment.Center,
-            ) { legend() }
-            // front lip
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .height(lip)
-                    .clip(RoundedCornerShape(bottomStart = 3.dp, bottomEnd = 3.dp))
-                    .background(lipColor)
+                    .fillMaxSize()
+                    .clip(CircleShape)
+                    .background(Tape.Fg.copy(alpha = 0.18f))
             )
         }
+        legend()
     }
 }
-

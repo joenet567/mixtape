@@ -60,6 +60,7 @@ fun SettingsScreen(vm: MainViewModel) {
         Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
+            .padding(bottom = LocalChromeInset.current)
     ) {
         BackRow(vm)
         Text(
@@ -222,6 +223,6 @@ private fun LicenseDialog(file: String, onDismiss: () -> Unit) {
                 modifier = Modifier.verticalScroll(rememberScrollState()),
             )
         },
-        containerColor = Tape.Surface,
+        containerColor = glassContainerColor(),
     )
 }

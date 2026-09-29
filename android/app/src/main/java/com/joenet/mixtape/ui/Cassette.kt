@@ -79,6 +79,8 @@ private val Hole = Color(0xFF0B0908)
 private val TapeBrown = Tape.TapeBrown
 private val TapeEdge = Tape.TapeEdge
 private val Rule = Color(0xFFCDBFA6)
+// The window rim is part of the physical cassette, so it looks the same in both themes (the old dark hairline).
+private val WindowRim = Color(0xFF3A3129)
 
 private fun packRadius(fill: Float) =
     sqrt(HUB * HUB + (PACK_MAX * PACK_MAX - HUB * HUB) * fill.coerceIn(0f, 1f))
@@ -136,7 +138,8 @@ fun Cassette(
         Text(
             label,
             style = TextStyle.Default,
-            fontFamily = Marker,
+            fontFamily = Mix,
+            fontWeight = FontWeight.Bold,
             fontSize = sp(0.092f),
             color = Tape.PaperInk,
             maxLines = 1,
@@ -146,7 +149,7 @@ fun Cassette(
         Text(
             "A",
             style = TextStyle.Default,
-            fontFamily = Barlow,
+            fontFamily = Mix,
             fontWeight = FontWeight.Bold,
             fontSize = sp(0.11f),
             color = Tape.PaperInk.copy(alpha = 0.85f),
@@ -217,12 +220,13 @@ fun TapeSideB(title: String, artist: String, art: Uri?, labelColor: Color, modif
                             .background(labelColor, RoundedCornerShape(dp(0.008f))),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text("B", style = TextStyle.Default, fontFamily = Barlow, fontWeight = FontWeight.Bold, fontSize = sp(0.036f), color = Tape.PaperInk)
+                        Text("B", style = TextStyle.Default, fontFamily = Mix, fontWeight = FontWeight.Bold, fontSize = sp(0.036f), color = Tape.PaperInk)
                     }
                     Text(
                         "$title — $artist",
                         style = TextStyle.Default,
-                        fontFamily = Marker,
+                        fontFamily = Mix,
+                        fontWeight = FontWeight.Bold,
                         fontSize = sp(0.075f),
                         color = Tape.PaperInk,
                         maxLines = 1,
@@ -325,7 +329,7 @@ internal fun DrawScope.drawWindow(progress: Float, angleL: Float, angleR: Float)
         }
         drawPath(glare, Color.White.copy(alpha = 0.06f))
     }
-    drawPath(winPath, Tape.Line, style = Stroke(f(0.004f)))
+    drawPath(winPath, WindowRim, style = Stroke(f(0.004f)))
 }
 
 private fun DrawScope.reel(c: Offset, packR: Float, angle: Float, w: Float) {

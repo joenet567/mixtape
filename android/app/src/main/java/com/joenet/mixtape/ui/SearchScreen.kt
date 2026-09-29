@@ -3,7 +3,6 @@ package com.joenet.mixtape.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -18,7 +17,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -67,42 +65,46 @@ fun SearchScreen(vm: MainViewModel) {
         Text(
             "Search",
             style = MaterialTheme.typography.headlineMedium,
-            color = Tape.Cream,
+            color = Tape.Fg,
             modifier = Modifier.padding(start = 20.dp, top = 16.dp, bottom = 12.dp),
         )
+        val fieldShape = RoundedCornerShape(50)
         TextField(
             value = query,
             onValueChange = { query = it },
-            placeholder = { Text("Songs, artists, tapes", color = Tape.Dust) },
-            leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null, tint = Tape.Dust) },
+            placeholder = { Text("Songs, artists, tapes", color = Tape.FgMuted) },
+            leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null, tint = Tape.FgMuted) },
             trailingIcon = if (query.isNotEmpty()) {
-                { IconButton(onClick = { query = "" }) { Icon(Icons.Rounded.Close, contentDescription = "Clear search", tint = Tape.Dust) } }
+                { IconButton(onClick = { query = "" }) { Icon(Icons.Rounded.Close, contentDescription = "Clear search", tint = Tape.FgMuted) } }
             } else null,
             singleLine = true,
-            shape = CircleShape,
+            shape = fieldShape,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             keyboardActions = KeyboardActions(onSearch = {
                 used()
                 focus.clearFocus()
             }),
+            // the glass pill is drawn by the modifier, so the field's own container stays transparent
             colors = TextFieldDefaults.colors(
-                focusedContainerColor = Tape.DeckHigh,
-                unfocusedContainerColor = Tape.DeckHigh,
+                focusedContainerColor = Color.Transparent,
+                unfocusedContainerColor = Color.Transparent,
                 focusedIndicatorColor = Color.Transparent,
                 unfocusedIndicatorColor = Color.Transparent,
-                cursorColor = Tape.Cream,
-                focusedTextColor = Tape.Cream,
-                unfocusedTextColor = Tape.Cream,
+                cursorColor = Tape.Fg,
+                focusedTextColor = Tape.Fg,
+                unfocusedTextColor = Tape.Fg,
             ),
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp),
+                .padding(horizontal = 16.dp)
+                // in-content glass: this screen is the glass source, so no backdrop (flat translucent fill + rim)
+                .glass(fieldShape, backdrop = null, strength = GlassStrength.Thin, elevation = 0.dp),
         )
         when {
             query.isBlank() -> SearchStart(vm) { query = it }
             results.isEmpty -> Text(
                 "Nothing matches “$query”. Every word has to appear in a song, artist or tape name.",
-                color = Tape.Dust,
+                color = Tape.FgMuted,
                 textAlign = TextAlign.Center,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -116,21 +118,21 @@ fun SearchScreen(vm: MainViewModel) {
 /** An empty box shows your recent searches (and what you played recently). */
 @Composable
 private fun SearchStart(vm: MainViewModel, onPick: (String) -> Unit) {
-    LazyColumn(Modifier.fillMaxSize()) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 16.dp + LocalChromeInset.current)) {
         if (vm.recentSearches.isEmpty()) {
             item {
                 Text(
                     "Find songs, artists and tapes. Accents don't matter, and words can come in any order: " +
                         "“son tung” finds “Sơn Tùng”.",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = Tape.Dust,
+                    color = Tape.FgMuted,
                     modifier = Modifier.padding(20.dp),
                 )
             }
         } else {
             item {
                 SectionTitle("Recent searches") {
-                    TextButton(onClick = vm::clearRecentSearches) { Text("Clear", color = Tape.Dust) }
+                    TextButton(onClick = vm::clearRecentSearches) { Text("Clear", color = Tape.FgMuted) }
                 }
             }
             items(vm.recentSearches, key = { "r:$it" }) { q ->
@@ -141,8 +143,8 @@ private fun SearchStart(vm: MainViewModel, onPick: (String) -> Unit) {
                         .padding(horizontal = 20.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(Icons.Rounded.History, contentDescription = null, tint = Tape.Dust, modifier = Modifier.size(20.dp))
-                    Text(q, color = Tape.Cream, modifier = Modifier.padding(start = 16.dp))
+                    Icon(Icons.Rounded.History, contentDescription = null, tint = Tape.FgMuted, modifier = Modifier.size(20.dp))
+                    Text(q, color = Tape.Fg, modifier = Modifier.padding(start = 16.dp))
                 }
             }
         }
@@ -169,7 +171,7 @@ private fun Results(vm: MainViewModel, r: SearchResults, used: () -> Unit) {
         used()
         vm.player.play(r.songs, index, ctx) // the rest of the matches follow it, like Spotify
     }
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp + LocalChromeInset.current)) {
         r.top?.let { top ->
             item(key = "top") {
                 SectionTitle("Top result")
@@ -188,7 +190,7 @@ private fun Results(vm: MainViewModel, r: SearchResults, used: () -> Unit) {
                 SectionTitle("Songs") {
                     if (r.songs.size > 4) {
                         TextButton(onClick = { allSongs = !allSongs }) {
-                            Text(if (allSongs) "Show fewer" else "Show all ${r.songs.size}", color = Tape.Dust)
+                            Text(if (allSongs) "Show fewer" else "Show all ${r.songs.size}", color = Tape.FgMuted)
                         }
                     }
                 }
@@ -223,8 +225,8 @@ private fun Results(vm: MainViewModel, r: SearchResults, used: () -> Unit) {
                                 horizontalAlignment = Alignment.CenterHorizontally,
                             ) {
                                 ArtistAvatar(name, 84.dp)
-                                Text(name, color = Tape.Cream, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp))
-                                Text(songCount(songs.size), style = MaterialTheme.typography.bodySmall, color = Tape.Dust)
+                                Text(name, color = Tape.Fg, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp))
+                                Text(songCount(songs.size), style = MaterialTheme.typography.bodySmall, color = Tape.FgMuted)
                             }
                         }
                     }
@@ -249,7 +251,7 @@ private fun TopResultCard(vm: MainViewModel, top: TopResult, onClick: () -> Unit
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
             .clip(RoundedCornerShape(12.dp))
-            .background(Tape.Deck)
+            .background(Tape.Surface)
             .clickable(onClick = onClick)
             .padding(14.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -257,7 +259,7 @@ private fun TopResultCard(vm: MainViewModel, top: TopResult, onClick: () -> Unit
         when (top) {
             is TopResult.OfSong -> SongArt(top.song.uri, Modifier.size(84.dp), corner = 8.dp, seed = top.song.folder)
             is TopResult.OfArtist -> ArtistAvatar(top.name, 84.dp)
-            is TopResult.OfTape -> Box(Modifier.width(120.dp)) { TapeCassette(vm, top.tape, Modifier.fillMaxWidth()) }
+            is TopResult.OfTape -> TapeCover(vm, top.tape, Modifier.width(120.dp))
         }
         Column(
             Modifier
@@ -271,7 +273,7 @@ private fun TopResultCard(vm: MainViewModel, top: TopResult, onClick: () -> Unit
                     is TopResult.OfTape -> top.tape.name
                 },
                 style = MaterialTheme.typography.titleLarge,
-                color = Tape.Cream,
+                color = Tape.Fg,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -283,7 +285,7 @@ private fun TopResultCard(vm: MainViewModel, top: TopResult, onClick: () -> Unit
                     is TopResult.OfTape -> "Tape · ${songCount(top.tape.songs.size)}"
                 },
                 style = MaterialTheme.typography.bodyMedium,
-                color = Tape.Dust,
+                color = Tape.FgMuted,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )

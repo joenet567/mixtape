@@ -1,11 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- The app is always dark (cassette-deck palette in ui/Theme.kt); this only covers the window before Compose draws -->
-    <style name="Theme.Mixtape" parent="android:Theme.Material.NoActionBar">
+    <!-- Light window before Compose draws (the palette is in ui/Theme.kt; window_bg matches Tape.Bg, light).
+         values-night/themes.xml has the dark twin; MainActivity re-applies both when the in-app theme differs from the phone's. -->
+    <style name="Theme.Mixtape" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@color/window_bg</item>
         <item name="android:colorAccent">@color/icon_fg</item>
+        <!-- dark icons on the light status and navigation bars -->
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
     </style>
-    <color name="window_bg">#FF14110E</color>
+    <color name="window_bg">#FFF7F1E7</color>
     <color name="icon_bg">#FF14110E</color>
     <color name="icon_fg">#FFFF6B35</color>
     <color name="icon_stripe">#FFF4B942</color>

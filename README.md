@@ -64,7 +64,7 @@ On the phone, **Settings → Sync automatically** (on by default, after your fir
 
 ## App
 
-The look is a cassette deck. It's always dark: espresso-black shell and cream "paper" text. Orange means something is live right now (the playing song, progress, the play light, REC) and is used for nothing else. Headings and printed legends (SIDE A, C-90, REC) are Barlow Condensed, times use a monospace tape counter, tape names are written in biro (Reenie Beanie) on the labels, and everything else is plain sentence case. With "Remove animations" on, the reels stand still.
+The look is cover-first, with a cassette deck's character. The cover art is the main element, and each tape keeps its identity as a small live cassette badge on the corner of its cover (the reels turn and the tape moves as it plays; the player flips to the full cassette). The theme is light, dark or follows the phone: warm paper by day, an espresso-black deck by night. Bars, the mini player, chips and dialogs are Liquid Glass, translucent surfaces that blur what scrolls beneath them (blur needs Android 12 or newer; older phones get a more opaque tint). Orange means something is live right now (the playing song, progress, the play light, REC) and is used for nothing else. Text is Figtree, an open geometric sans standing in for Spotify Mix, which is proprietary and can't be bundled; times use a monospace tape counter, printed legends (SIDE A, C-90, REC) are small tracked caps, and everything else is plain sentence case. With "Remove animations" on, the reels stand still.
 
 **Getting around** — three tabs on the deck's function selector, each with its own back stack (tap the tab you're on to go back to its top):
 
@@ -129,7 +129,7 @@ powershell -ExecutionPolicy Bypass -File android\build-apk.ps1         # -> Mixt
 
 The release APK is signed with the local debug key in `D:\Android\user-home\debug.keystore`. Keep that file: an APK signed with a different key can't install over the old one (you'd have to uninstall first, which loses your history, likes and recorded tapes, but none of your music).
 
-Stack: Kotlin 2.1, Jetpack Compose (Material 3 with a custom palette; body text in the system Roboto, plus two bundled OFL fonts, [Reenie Beanie](https://fonts.google.com/specimen/Reenie+Beanie) and [Barlow Condensed](https://fonts.google.com/specimen/Barlow+Condensed), about 370 KB inside the APK, so nothing is downloaded at runtime; licenses in `android/app/src/main/assets/licenses/`), Media3 1.5 (ExoPlayer, MediaLibrarySession), Room, WorkManager, Glance, [Reorderable](https://github.com/Calvin-LL/Reorderable), AndroidX Palette, minSdk 29 / targetSdk 35. Source is in `android/app/src/main/java/com/joenet/mixtape/`:
+Stack: Kotlin 2.1, Jetpack Compose (Material 3 with a custom light and dark palette; one bundled OFL font, [Figtree](https://fonts.google.com/specimen/Figtree) (a variable font, about 61 KB inside the APK), so nothing is downloaded at runtime; its license is `android/app/src/main/assets/licenses/Figtree-OFL.txt`), Media3 1.5 (ExoPlayer, MediaLibrarySession), Room, WorkManager, Glance, [Reorderable](https://github.com/Calvin-LL/Reorderable), AndroidX Palette, minSdk 29 / targetSdk 35. Source is in `android/app/src/main/java/com/joenet/mixtape/`:
 
 | File | Role |
 |---|---|

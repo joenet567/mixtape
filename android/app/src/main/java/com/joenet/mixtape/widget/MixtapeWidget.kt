@@ -80,6 +80,12 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.math.roundToInt
 
+/** The widget always stays on the dark deck, whatever theme the app is in, so it does not read the theme-following Tape tokens. */
+private object WidgetColors {
+    val Deck = Color(0xFF1D1915)
+    val Dust = Color(0xFFA3927F)
+}
+
 /**
  * The home-screen widget: the tape that's in the deck (a still frame of the app's cassette, cover
  * sticker and all) with the song and two deck keys, play/pause and next. Tap the tape to open
@@ -109,7 +115,7 @@ class MixtapeWidget : GlanceAppWidget() {
         Row(
             GlanceModifier
                 .fillMaxSize()
-                .background(Tape.Deck)
+                .background(WidgetColors.Deck)
                 .cornerRadius(20.dp)
                 .padding(10.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -130,12 +136,12 @@ class MixtapeWidget : GlanceAppWidget() {
                 Text(
                     now.title.ifEmpty { "Mixtape" },
                     maxLines = 2,
-                    style = TextStyle(color = ColorProvider(Tape.Cream), fontSize = 15.sp, fontWeight = FontWeight.Bold),
+                    style = TextStyle(color = ColorProvider(Tape.OnCover), fontSize = 15.sp, fontWeight = FontWeight.Bold),
                 )
                 Text(
                     now.artist.ifEmpty { "Tap the tape to start" },
                     maxLines = 1,
-                    style = TextStyle(color = ColorProvider(Tape.Dust), fontSize = 12.sp),
+                    style = TextStyle(color = ColorProvider(WidgetColors.Dust), fontSize = 12.sp),
                 )
                 Spacer(GlanceModifier.height(10.dp))
                 Row {
@@ -160,7 +166,7 @@ class MixtapeWidget : GlanceAppWidget() {
                 .clickable(actionRunCallback<DeckKeyAction>(actionParametersOf(KeyParam to key))),
             contentAlignment = Alignment.Center,
         ) {
-            Image(ImageProvider(icon), contentDescription = label, colorFilter = ColorFilter.tint(ColorProvider(Tape.Ink)), modifier = GlanceModifier.size(24.dp))
+            Image(ImageProvider(icon), contentDescription = label, colorFilter = ColorFilter.tint(ColorProvider(Tape.OnAccent)), modifier = GlanceModifier.size(24.dp))
         }
     }
 
@@ -191,16 +197,18 @@ class MixtapeWidget : GlanceAppWidget() {
             val bitmap = image.asAndroidBitmap()
             val canvas = android.graphics.Canvas(bitmap)
             val w = width.toFloat()
-            // The label, handwritten, and the side letter, as Cassette() lays them out.
+            // The label and the side letter, as Cassette() lays them out. Figtree is one variable font, so pick the weight.
             val marker = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-                typeface = ResourcesCompat.getFont(context, R.font.reenie_beanie)
+                typeface = ResourcesCompat.getFont(context, R.font.figtree)
+                setFontVariationSettings("'wght' 600")
                 textSize = w * 0.092f
                 color = Tape.PaperInk.toArgb()
             }
             val shown = TextUtils.ellipsize(label, marker, w * 0.82f, TextUtils.TruncateAt.END).toString()
             canvas.drawText(shown, w * 0.09f, w * 0.052f - marker.fontMetrics.ascent, marker)
             val side = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-                typeface = ResourcesCompat.getFont(context, R.font.barlow_condensed_bold)
+                typeface = ResourcesCompat.getFont(context, R.font.figtree)
+                setFontVariationSettings("'wght' 700")
                 textSize = w * 0.11f
                 color = Tape.PaperInk.copy(alpha = 0.85f).toArgb()
             }

@@ -23,6 +23,7 @@ import com.joenet.mixtape.data.TapeTrack
 import com.joenet.mixtape.data.TapeWithTracks
 import com.joenet.mixtape.data.UserTape
 import com.joenet.mixtape.ui.Tape
+import com.joenet.mixtape.ui.ThemeMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -120,6 +121,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /** Now Playing shows the lyrics under a smaller cassette (remembered between sessions). */
     var showLyrics by mutableStateOf(AppSettings.showLyrics(app))
         private set
+    // Backing state is separate from the read-only `themeMode`: a `var themeMode` would generate a JVM
+    // setThemeMode(ThemeMode) that clashes with the public setter function below.
+    private var themeModeState by mutableStateOf(ThemeMode.fromKey(AppSettings.themeMode(app)))
+
+    /** Light, dark, or follow the phone (remembered between sessions). Change it with [setThemeMode]. */
+    val themeMode: ThemeMode get() = themeModeState
+
+    fun setThemeMode(mode: ThemeMode) {
+        themeModeState = mode
+        AppSettings.setThemeMode(getApplication(), mode.key)
+    }
 
     fun updateEvenLoudness(on: Boolean) {
         evenLoudness = on
